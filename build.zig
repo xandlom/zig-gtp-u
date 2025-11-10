@@ -95,4 +95,14 @@ pub fn build(b: *std.Build) void {
     });
     mock_upf.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(mock_upf);
+
+    // MockGNB executable
+    const mock_gnb = b.addExecutable(.{
+        .name = "mock-gnb",
+        .root_source_file = b.path("tests/mock_gnb.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    mock_gnb.root_module.addImport("gtpu", gtpu_module);
+    b.installArtifact(mock_gnb);
 }
