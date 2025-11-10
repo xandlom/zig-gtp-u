@@ -69,9 +69,6 @@ const MockUPF = struct {
         var tunnel_mgr = gtpu.TunnelManager.init(allocator);
         errdefer tunnel_mgr.deinit();
 
-        var session_mgr = gtpu.SessionManager.init(allocator, &tunnel_mgr);
-        errdefer session_mgr.deinit();
-
         const path_config = gtpu.path.PathConfig{
             .echo_interval_ms = 60000,
             .echo_timeout_ms = 5000,
@@ -89,7 +86,7 @@ const MockUPF = struct {
         return .{
             .allocator = allocator,
             .tunnel_mgr = tunnel_mgr,
-            .session_mgr = session_mgr,
+            .session_mgr = undefined, // Caller must call initSessionManager()
             .path_mgr = path_mgr,
             .qos_mgr = qos_mgr,
             .packet_pool = packet_pool,
@@ -98,6 +95,10 @@ const MockUPF = struct {
             .stats = Stats.init(),
             .running = std.atomic.Value(bool).init(false),
         };
+    }
+
+    pub fn initSessionManager(self: *MockUPF) void {
+        self.session_mgr = gtpu.SessionManager.init(self.allocator, &self.tunnel_mgr);
     }
 
     pub fn deinit(self: *MockUPF) void {
@@ -280,6 +281,9 @@ pub fn main() !void {
 
     var upf = try MockUPF.init(allocator, listen_addr, port);
     defer upf.deinit();
+
+    // Initialize session manager (must be done after init returns)
+    upf.initSessionManager();
 
     // Create a test session
     const remote_addr = try std.net.Address.parseIp("192.168.1.100", gtpu.protocol.GTPU_PORT);
