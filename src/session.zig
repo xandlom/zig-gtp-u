@@ -47,8 +47,8 @@ pub const PduSession = struct {
     allocator: std.mem.Allocator,
     mutex: std.Thread.Mutex = .{},
 
-    created_at: i64,
-    modified_at: i64,
+    created_at: i128,
+    modified_at: i128,
 
     pub fn init(
         allocator: std.mem.Allocator,

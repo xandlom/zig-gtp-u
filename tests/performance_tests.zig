@@ -2,7 +2,7 @@
 // Tests for throughput, latency, and scalability
 
 const std = @import("std");
-const gtpu = @import("../src/lib.zig");
+const gtpu = @import("gtpu");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

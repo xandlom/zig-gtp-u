@@ -2,7 +2,7 @@
 // Tests packet encoding/decoding against known good packets
 
 const std = @import("std");
-const gtpu = @import("../src/lib.zig");
+const gtpu = @import("gtpu");
 
 const testing = std.testing;
 

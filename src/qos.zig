@@ -17,7 +17,7 @@ pub const QosCharacteristics = enum(u8) {
     video_non_conversational = 9,          // Non-conversational video (buffered)
 
     // Non-GBR Resource Types
-    default_bearer = 9,                    // Default bearer (reused value)
+    default_bearer = 10,                    // Default bearer (reused value)
     ims_video = 65,                        // IMS video
     tcp_based = 66,                        // TCP-based (web, email, etc.)
     live_video_streaming = 67,             // Live video streaming

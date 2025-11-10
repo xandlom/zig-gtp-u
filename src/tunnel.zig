@@ -32,8 +32,8 @@ pub const TunnelStats = struct {
     bytes_tx: u64 = 0,
     bytes_rx: u64 = 0,
     errors: u64 = 0,
-    created_at: i64 = 0,
-    last_activity: i64 = 0,
+    created_at: i128 = 0,
+    last_activity: i128 = 0,
 
     mutex: std.Thread.Mutex = .{},
 
@@ -61,13 +61,13 @@ pub const TunnelStats = struct {
         self.errors += 1;
     }
 
-    pub fn getLifetime(self: *TunnelStats) i64 {
+    pub fn getLifetime(self: *TunnelStats) i128 {
         self.mutex.lock();
         defer self.mutex.unlock();
         return std.time.nanoTimestamp() - self.created_at;
     }
 
-    pub fn getIdleTime(self: *TunnelStats) i64 {
+    pub fn getIdleTime(self: *TunnelStats) i128 {
         self.mutex.lock();
         defer self.mutex.unlock();
         return std.time.nanoTimestamp() - self.last_activity;
@@ -83,7 +83,7 @@ pub const TunnelConfig = struct {
     remote_teid: TEID,
     local_address: std.net.Address,
     remote_address: std.net.Address,
-    idle_timeout_ns: i64 = 300 * std.time.ns_per_s, // 5 minutes
+    idle_timeout_ns: i128 = 300 * std.time.ns_per_s, // 5 minutes
 
     pub fn validate(self: TunnelConfig) !void {
         if (self.local_teid == 0) {

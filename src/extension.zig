@@ -146,9 +146,6 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
     pdcp_pdu_number: PdcpPduNumber,
     suspend_request: void,
     suspend_response: void,
-    _: void,
-
-    next_type: ExtensionHeaderType = .no_more_headers,
 
     pub fn deinit(self: *ExtensionHeader) void {
         switch (self.*) {
@@ -179,7 +176,7 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         return 1 + (units * 4); // length byte + content + padding + next type
     }
 
-    pub fn encode(self: ExtensionHeader, writer: anytype, is_last: bool) !void {
+    pub fn encode(self: ExtensionHeader, writer: anytype, _: bool) !void {
         const content_size = switch (self) {
             .pdu_session_container => 2,
             .pdcp_pdu_number => 2,
@@ -217,7 +214,7 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         }
 
         // Write next extension type
-        const next = if (is_last) ExtensionHeaderType.no_more_headers else self.next_type;
+        const next = ExtensionHeaderType.no_more_headers; // Always terminate
         try writer.writeByte(@intFromEnum(next));
     }
 
@@ -229,7 +226,7 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         var limited = std.io.limitedReader(reader, content_size);
         const lim_reader = limited.reader();
 
-        var result: ExtensionHeader = switch (ext_type) {
+        const result: ExtensionHeader = switch (ext_type) {
             .pdu_session_container => .{
                 .pdu_session_container = try PduSessionContainer.decode(lim_reader),
             },
@@ -245,7 +242,7 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
             .udp_port => .{
                 .udp_port = try UdpPortExtension.decode(lim_reader),
             },
-            else => .{ ._ = {} },
+            else => @panic("Unknown extension header type"),
         };
 
         // Skip any remaining padding
@@ -256,7 +253,7 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         }
 
         // Read next extension type
-        result.next_type = @enumFromInt(try reader.readByte());
+        _ = try reader.readByte(); // Skip next_type
 
         return result;
     }

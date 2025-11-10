@@ -2,7 +2,7 @@
 // Simulates realistic 5G traffic scenarios
 
 const std = @import("std");
-const gtpu = @import("../src/lib.zig");
+const gtpu = @import("gtpu");
 
 const MockUPF = struct {
     allocator: std.mem.Allocator,
@@ -291,8 +291,8 @@ pub fn main() !void {
 
         fn handle(sig: c_int) callconv(.C) void {
             _ = sig;
-            if (upf_ptr) |upf| {
-                upf.stop();
+            if (upf_ptr) |u| {
+                u.stop();
             }
         }
     };
@@ -304,7 +304,7 @@ pub fn main() !void {
         .mask = std.posix.empty_sigset,
         .flags = 0,
     };
-    try std.posix.sigaction(std.posix.SIG.INT, &act, null);
+    std.posix.sigaction(std.posix.SIG.INT, &act, null);
 
     // Start processing
     try upf.start();

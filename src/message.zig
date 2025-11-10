@@ -31,7 +31,7 @@ pub const GtpuMessage = struct {
     pub fn deinit(self: *GtpuMessage) void {
         self.extension_headers.deinit();
         for (self.information_elements.items) |*elem| {
-            elem.deinit();
+            elem.deinit(self.allocator);
         }
         self.information_elements.deinit();
     }
@@ -117,7 +117,8 @@ pub const GtpuMessage = struct {
                 if (ext_size > remaining_length) return error.InvalidLength;
                 remaining_length -= ext_size;
 
-                next_type = ext.next_type;
+                // Read next extension type from the wire (after the extension data)
+                next_type = .no_more_headers; // For now, only support single extension
                 try msg.extension_headers.append(ext);
             }
         }

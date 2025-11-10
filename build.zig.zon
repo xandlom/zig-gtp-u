@@ -1,6 +1,7 @@
 .{
-    .name = "zig_gtp_u",
+    .name = .gtpu,
     .version = "0.1.0",
+    .fingerprint = 0xdb1d2c6f0b1c9bc4,
     .minimum_zig_version = "0.14.1",
     .dependencies = .{},
     .paths = .{

@@ -14,6 +14,11 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(gtpu_lib);
 
+    // Create module for the library
+    const gtpu_module = b.addModule("gtpu", .{
+        .root_source_file = b.path("src/lib.zig"),
+    });
+
     // Example executable
     const example_exe = b.addExecutable(.{
         .name = "gtpu-example",
@@ -21,6 +26,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    example_exe.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(example_exe);
 
     // Run step for example
@@ -46,6 +52,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    compliance_tests.root_module.addImport("gtpu", gtpu_module);
     const run_compliance_tests = b.addRunArtifact(compliance_tests);
 
     // Wire format tests
@@ -54,6 +61,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    wire_tests.root_module.addImport("gtpu", gtpu_module);
     const run_wire_tests = b.addRunArtifact(wire_tests);
 
     // Performance tests
@@ -63,6 +71,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = .ReleaseFast,
     });
+    perf_tests.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(perf_tests);
 
     // Test step
@@ -84,5 +93,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    mock_upf.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(mock_upf);
 }

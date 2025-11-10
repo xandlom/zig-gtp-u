@@ -11,7 +11,7 @@ pub const TeidGenerator = struct {
     mutex: std.Thread.Mutex = .{},
 
     pub fn init() !TeidGenerator {
-        var seed: [32]u8 = undefined;
+        var seed: [8]u8 = undefined;
         try std.posix.getrandom(&seed);
 
         return .{
@@ -252,9 +252,9 @@ pub fn CircularBuffer(comptime T: type) type {
 
         const Self = @This();
 
-        pub fn init(allocator: std.mem.Allocator, capacity: usize) !Self {
+        pub fn init(allocator: std.mem.Allocator, cap: usize) !Self {
             return .{
-                .buffer = try allocator.alloc(T, capacity),
+                .buffer = try allocator.alloc(T, cap),
                 .allocator = allocator,
             };
         }

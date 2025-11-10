@@ -56,23 +56,18 @@ pub const InformationElement = union(IEType) {
     gsn_address: []const u8,
     extension_header_type_list: []const u8,
     private_extension: PrivateExtension,
-    _: void,
-
-    allocator: ?std.mem.Allocator = null,
 
     pub const PrivateExtension = struct {
         enterprise_id: u16,
         value: []const u8,
     };
 
-    pub fn deinit(self: *InformationElement) void {
-        if (self.allocator) |allocator| {
-            switch (self.*) {
-                .gsn_address => |addr| allocator.free(addr),
-                .extension_header_type_list => |list| allocator.free(list),
-                .private_extension => |ext| allocator.free(ext.value),
-                else => {},
-            }
+    pub fn deinit(self: *InformationElement, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .gsn_address => |addr| allocator.free(addr),
+            .extension_header_type_list => |list| allocator.free(list),
+            .private_extension => |ext| allocator.free(ext.value),
+            else => {},
         }
     }
 
@@ -101,7 +96,6 @@ pub const InformationElement = union(IEType) {
 
         return .{
             .gsn_address = addr_bytes,
-            .allocator = allocator,
         };
     }
 
@@ -168,7 +162,6 @@ pub const InformationElement = union(IEType) {
                 }
                 break :blk .{
                     .gsn_address = addr,
-                    .allocator = allocator,
                 };
             },
             .extension_header_type_list => blk: {
@@ -180,7 +173,6 @@ pub const InformationElement = union(IEType) {
                 }
                 break :blk .{
                     .extension_header_type_list = list,
-                    .allocator = allocator,
                 };
             },
             .private_extension => blk: {
@@ -197,10 +189,9 @@ pub const InformationElement = union(IEType) {
                         .enterprise_id = enterprise_id,
                         .value = value,
                     },
-                    .allocator = allocator,
                 };
             },
-            else => .{ ._ = {} },
+            else => @panic("Unknown IE type"),
         };
     }
 };

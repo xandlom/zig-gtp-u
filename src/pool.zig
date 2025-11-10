@@ -14,11 +14,11 @@ pub fn MemoryPool(comptime T: type) type {
 
         const Self = @This();
 
-        pub fn init(allocator: std.mem.Allocator, capacity: usize) !Self {
-            const pool = try allocator.alloc(T, capacity);
+        pub fn init(allocator: std.mem.Allocator, cap: usize) !Self {
+            const pool = try allocator.alloc(T, cap);
             errdefer allocator.free(pool);
 
-            const free_list = try allocator.alloc(?*T, capacity);
+            const free_list = try allocator.alloc(?*T, cap);
             errdefer allocator.free(free_list);
 
             // Initialize free list
@@ -29,7 +29,7 @@ pub fn MemoryPool(comptime T: type) type {
             return .{
                 .pool = pool,
                 .free_list = free_list,
-                .free_count = capacity,
+                .free_count = cap,
                 .allocator = allocator,
             };
         }
@@ -359,7 +359,7 @@ test "BatchProcessor" {
     try std.testing.expect(processor.add(buf2));
     try std.testing.expectEqual(@as(usize, 2), processor.size());
 
-    var processed: usize = 0;
+    _ = 0; // var processed: usize = 0;
     const callback = struct {
         fn call(packet: *PacketBuffer) void {
             _ = packet;

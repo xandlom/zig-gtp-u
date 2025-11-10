@@ -2,7 +2,7 @@
 // Tests for 3GPP TS 29.281 compliance
 
 const std = @import("std");
-const gtpu = @import("../src/lib.zig");
+const gtpu = @import("gtpu");
 
 const testing = std.testing;
 
