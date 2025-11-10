@@ -1,3 +1,24 @@
 .zig-cache/
 zig-out/
 *.o
+*.so
+*.a
+*.dylib
+*.exe
+*.wasm
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test artifacts
+*.pcap
+*.log
+
+# Build artifacts
+mock-upf
+gtpu-example
+gtpu-perf
