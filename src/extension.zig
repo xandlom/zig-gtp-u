@@ -157,8 +157,9 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
     }
 
     pub fn size(self: ExtensionHeader) usize {
-        // Extension header format: length (1 byte) + content (n * 4 bytes) + next type (1 byte)
-        // length field = number of 4-byte units
+        // Extension header format: length (1 byte) + content + padding + next type (1 byte)
+        // Total size = length * 4 (length field value times 4)
+        // The length field includes itself in the count
         const content_size = switch (self) {
             .pdu_session_container => 2,
             .pdcp_pdu_number => 2,
@@ -171,12 +172,14 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
             else => 0,
         };
 
-        // Calculate 4-byte aligned size
-        const units = (content_size + 3) / 4;
-        return 1 + (units * 4); // length byte + content + padding + next type
+        // Calculate units: need to fit length(1) + content + next_type(1) in units*4 bytes
+        // units * 4 >= 1 + content_size + 1
+        // units >= (content_size + 2) / 4
+        const units = (content_size + 2 + 3) / 4; // +2 for length and next_type, +3 for ceiling
+        return units * 4; // Total size is always multiple of 4
     }
 
-    pub fn encode(self: ExtensionHeader, writer: anytype, _: bool) !void {
+    pub fn encode(self: ExtensionHeader, writer: anytype, next_ext_type: ?ExtensionHeaderType) !void {
         const content_size = switch (self) {
             .pdu_session_container => 2,
             .pdcp_pdu_number => 2,
@@ -190,7 +193,8 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         };
 
         // Calculate length in 4-byte units
-        const units: u8 = @intCast((content_size + 3) / 4);
+        // Total bytes needed: length(1) + content + next_type(1)
+        const units: u8 = @intCast((content_size + 2 + 3) / 4); // +2 for length and next_type, +3 for ceiling
         try writer.writeByte(units);
 
         // Write content
@@ -207,26 +211,40 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         }
 
         // Write padding to align to 4-byte boundary
-        const padding_size = (units * 4) - content_size - 1; // -1 for next_type
+        // Total size: units * 4
+        // Already written: 1 (length) + content_size
+        // Still need: next_type (1) + padding
+        const total_size = @as(usize, units) * 4;
+        const already_written = 1 + content_size; // length + content
+        const remaining = total_size - already_written; // This includes next_type + padding
+        const padding_size = remaining - 1; // -1 for next_type
+
         var i: usize = 0;
         while (i < padding_size) : (i += 1) {
             try writer.writeByte(0);
         }
 
         // Write next extension type
-        const next = ExtensionHeaderType.no_more_headers; // Always terminate
+        const next = next_ext_type orelse ExtensionHeaderType.no_more_headers;
         try writer.writeByte(@intFromEnum(next));
     }
 
-    pub fn decode(reader: anytype, ext_type: ExtensionHeaderType) !ExtensionHeader {
+    pub const DecodeResult = struct {
+        header: ExtensionHeader,
+        next_type: ExtensionHeaderType,
+    };
+
+    pub fn decode(reader: anytype, ext_type: ExtensionHeaderType) !DecodeResult {
         const length = try reader.readByte(); // Length in 4-byte units
-        const content_size = (length * 4) - 1; // -1 for next_type byte
+        // Total size is length * 4, which includes the length byte itself
+        // Content size = total - length byte - next_type byte
+        const content_size = (length * 4) - 1 - 1; // -1 for length byte, -1 for next_type byte
 
         // Create a limited reader for the content
         var limited = std.io.limitedReader(reader, content_size);
         const lim_reader = limited.reader();
 
-        const result: ExtensionHeader = switch (ext_type) {
+        const header: ExtensionHeader = switch (ext_type) {
             .pdu_session_container => .{
                 .pdu_session_container = try PduSessionContainer.decode(lim_reader),
             },
@@ -253,9 +271,16 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         }
 
         // Read next extension type
-        _ = try reader.readByte(); // Skip next_type
+        const next_type_byte = try reader.readByte();
+        const next_type: ExtensionHeaderType = if (next_type_byte == 0)
+            .no_more_headers
+        else
+            @enumFromInt(next_type_byte);
 
-        return result;
+        return .{
+            .header = header,
+            .next_type = next_type,
+        };
     }
 };
 
@@ -311,14 +336,14 @@ test "Extension Header full encode/decode" {
     // Encode
     var buffer = std.ArrayList(u8).init(allocator);
     defer buffer.deinit();
-    try ext.encode(buffer.writer(), true);
+    try ext.encode(buffer.writer(), null); // null means this is the last extension
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
-    var decoded = try ExtensionHeader.decode(stream.reader(), .pdcp_pdu_number);
-    defer decoded.deinit();
+    var decode_result = try ExtensionHeader.decode(stream.reader(), .pdcp_pdu_number);
+    defer decode_result.header.deinit();
 
-    try std.testing.expectEqual(ExtensionHeaderType.pdcp_pdu_number, decoded);
-    try std.testing.expectEqual(@as(u16, 999), decoded.pdcp_pdu_number.pdu_number);
-    try std.testing.expectEqual(ExtensionHeaderType.no_more_headers, decoded.next_type);
+    try std.testing.expectEqual(ExtensionHeaderType.pdcp_pdu_number, @as(ExtensionHeaderType, decode_result.header));
+    try std.testing.expectEqual(@as(u16, 999), decode_result.header.pdcp_pdu_number.pdu_number);
+    try std.testing.expectEqual(ExtensionHeaderType.no_more_headers, decode_result.next_type);
 }

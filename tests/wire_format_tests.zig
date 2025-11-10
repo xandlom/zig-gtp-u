@@ -44,7 +44,7 @@ const GOLDEN_ECHO_RESPONSE = [_]u8{
     // GTP-U Header with sequence number
     0x32, // Version=1, PT=1, E=0, S=1, PN=0
     0x02, // Message Type = Echo Response
-    0x00, 0x07, // Length = 7 bytes
+    0x00, 0x08, // Length = 8 bytes (4 for optional fields + 4 for IE)
     0x00, 0x00, 0x00, 0x00, // TEID = 0
 
     // Optional fields
@@ -96,7 +96,7 @@ test "Wire format - Decode golden Echo Response" {
     try testing.expectEqual(@as(usize, 1), msg.information_elements.items.len);
 
     const recovery_ie = msg.information_elements.items[0];
-    try testing.expectEqual(gtpu.ie.IEType.recovery, recovery_ie);
+    try testing.expectEqual(gtpu.ie.IEType.recovery, @as(gtpu.ie.IEType, recovery_ie));
 }
 
 test "Wire format - Encode/Decode round-trip G-PDU" {
@@ -160,7 +160,7 @@ test "Wire format - G-PDU with extension headers" {
     defer decoded.deinit();
 
     try testing.expectEqual(@as(usize, 2), decoded.extension_headers.items.len);
-    try testing.expectEqual(gtpu.protocol.ExtensionHeaderType.pdu_session_container, decoded.extension_headers.items[0]);
+    try testing.expectEqual(gtpu.protocol.ExtensionHeaderType.pdu_session_container, @as(gtpu.protocol.ExtensionHeaderType, decoded.extension_headers.items[0]));
     try testing.expectEqual(@as(u6, 9), decoded.extension_headers.items[0].pdu_session_container.qfi);
 }
 
@@ -251,7 +251,7 @@ test "Wire format - Byte alignment verification" {
         try msg.encode(buffer.writer());
 
         // Minimum header is 8 bytes, with optional fields it's 12 bytes
-        const expected_min = if (msg.header.flags.hasOptionalFields()) 12 else 8;
+        const expected_min: usize = if (msg.header.flags.hasOptionalFields()) 12 else 8;
         try testing.expect(buffer.items.len >= expected_min);
     }
 }

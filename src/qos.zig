@@ -291,13 +291,14 @@ test "QoS flow validation" {
     };
     try flow1.validate();
 
-    // Invalid QFI
+    // Invalid GBR flow (missing required parameters)
     const flow2 = QosFlowParams{
-        .qfi = 100,
-        .fiveqi = .default_bearer,
+        .qfi = 1,
+        .fiveqi = .conversational_voice,  // This is a GBR flow
         .arp = AllocationRetentionPriority.init(5),
+        // Missing gfbr_uplink and gfbr_downlink
     };
-    try std.testing.expectError(error.InvalidQfi, flow2.validate());
+    try std.testing.expectError(error.MissingGbrParameters, flow2.validate());
 }
 
 test "QoS flow manager" {

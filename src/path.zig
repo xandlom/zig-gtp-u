@@ -57,8 +57,8 @@ pub const Path = struct {
     stats: PathStats,
     config: PathConfig,
 
-    last_echo_time: i64 = 0,
-    last_response_time: i64 = 0,
+    last_echo_time: i128 = 0,
+    last_response_time: i128 = 0,
     consecutive_failures: u32 = 0,
     current_sequence: u16 = 0,
     pending_echo: ?PendingEcho = null,
@@ -67,7 +67,7 @@ pub const Path = struct {
 
     pub const PendingEcho = struct {
         sequence: u16,
-        sent_time: i64,
+        sent_time: i128,
     };
 
     pub fn init(peer_address: std.net.Address, config: PathConfig) Path {
@@ -79,7 +79,7 @@ pub const Path = struct {
         };
     }
 
-    pub fn needsEcho(self: *Path, current_time: i64) bool {
+    pub fn needsEcho(self: *Path, current_time: i128) bool {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -92,7 +92,7 @@ pub const Path = struct {
         return elapsed_ms >= self.config.echo_interval_ms;
     }
 
-    pub fn sendEcho(self: *Path, current_time: i64) u16 {
+    pub fn sendEcho(self: *Path, current_time: i128) u16 {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -107,7 +107,7 @@ pub const Path = struct {
         return self.current_sequence;
     }
 
-    pub fn receiveEchoResponse(self: *Path, sequence: u16, current_time: i64) !void {
+    pub fn receiveEchoResponse(self: *Path, sequence: u16, current_time: i128) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -135,7 +135,7 @@ pub const Path = struct {
         }
     }
 
-    pub fn checkTimeout(self: *Path, current_time: i64) void {
+    pub fn checkTimeout(self: *Path, current_time: i128) void {
         self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -192,7 +192,7 @@ pub const PathManager = struct {
 
         switch (address.any.family) {
             std.posix.AF.INET => {
-                hasher.update(&address.in.sa.addr);
+                hasher.update(std.mem.asBytes(&address.in.sa.addr));
                 hasher.update(std.mem.asBytes(&address.in.sa.port));
             },
             std.posix.AF.INET6 => {
@@ -235,7 +235,7 @@ pub const PathManager = struct {
         _ = self.paths.remove(hash);
     }
 
-    pub fn processEchos(self: *PathManager, current_time: i64, send_callback: *const fn (std.net.Address, u16) void) !void {
+    pub fn processEchos(self: *PathManager, current_time: i128, send_callback: *const fn (std.net.Address, u16) void) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
 

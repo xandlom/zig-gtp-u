@@ -15,6 +15,7 @@ pub const GtpuMessage = struct {
     extension_headers: std.ArrayList(extension.ExtensionHeader),
     information_elements: std.ArrayList(ie.InformationElement),
     payload: []const u8,
+    owns_payload: bool,
 
     allocator: std.mem.Allocator,
 
@@ -24,16 +25,28 @@ pub const GtpuMessage = struct {
             .extension_headers = std.ArrayList(extension.ExtensionHeader).init(allocator),
             .information_elements = std.ArrayList(ie.InformationElement).init(allocator),
             .payload = &[_]u8{},
+            .owns_payload = false,
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *GtpuMessage) void {
+        // Free extension headers
+        for (self.extension_headers.items) |*ext| {
+            ext.deinit();
+        }
         self.extension_headers.deinit();
+
+        // Free information elements
         for (self.information_elements.items) |*elem| {
             elem.deinit(self.allocator);
         }
         self.information_elements.deinit();
+
+        // Free payload if we own it
+        if (self.owns_payload and self.payload.len > 0) {
+            self.allocator.free(self.payload);
+        }
     }
 
     pub fn setPayload(self: *GtpuMessage, payload: []const u8) void {
@@ -42,6 +55,11 @@ pub const GtpuMessage = struct {
     }
 
     pub fn addExtensionHeader(self: *GtpuMessage, ext: extension.ExtensionHeader) !void {
+        // If this is the first extension header, set the next_extension_type in the header
+        if (self.extension_headers.items.len == 0) {
+            self.header.next_extension_type = @as(extension.ExtensionHeaderType, ext);
+            self.header.flags.s = true; // Extension headers require optional fields
+        }
         try self.extension_headers.append(ext);
         self.header.flags.e = true;
         self.updateLength();
@@ -85,8 +103,11 @@ pub const GtpuMessage = struct {
 
         // Encode extension headers
         for (self.extension_headers.items, 0..) |ext, i| {
-            const is_last = (i == self.extension_headers.items.len - 1);
-            try ext.encode(writer, is_last);
+            const next_ext_type = if (i + 1 < self.extension_headers.items.len)
+                @as(extension.ExtensionHeaderType, self.extension_headers.items[i + 1])
+            else
+                null;
+            try ext.encode(writer, next_ext_type);
         }
 
         // Encode information elements
@@ -105,21 +126,29 @@ pub const GtpuMessage = struct {
         var msg = GtpuMessage.init(allocator, hdr.message_type, hdr.teid);
         msg.header = hdr;
 
+        // Calculate remaining length after header
+        // The length field includes optional fields (4 bytes if present), which have already been consumed
         var remaining_length: usize = hdr.length;
+        if (hdr.flags.hasOptionalFields()) {
+            if (remaining_length >= 4) {
+                remaining_length -= 4;
+            } else {
+                return error.InvalidLength;
+            }
+        }
 
         // Decode extension headers if present
         if (hdr.flags.e) {
             var next_type = hdr.next_extension_type orelse .no_more_headers;
 
             while (next_type != .no_more_headers) {
-                const ext = try extension.ExtensionHeader.decode(reader, next_type);
-                const ext_size = ext.size();
+                const decode_result = try extension.ExtensionHeader.decode(reader, next_type);
+                const ext_size = decode_result.header.size();
                 if (ext_size > remaining_length) return error.InvalidLength;
                 remaining_length -= ext_size;
 
-                // Read next extension type from the wire (after the extension data)
-                next_type = .no_more_headers; // For now, only support single extension
-                try msg.extension_headers.append(ext);
+                try msg.extension_headers.append(decode_result.header);
+                next_type = decode_result.next_type;
             }
         }
 
@@ -132,6 +161,7 @@ pub const GtpuMessage = struct {
                 return error.UnexpectedEof;
             }
             msg.payload = payload_buf;
+            msg.owns_payload = true;
         } else {
             // For other message types, decode IEs
             while (remaining_length > 0) {

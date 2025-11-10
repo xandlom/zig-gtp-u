@@ -209,8 +209,8 @@ test "IE Recovery encode/decode" {
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
     var decoded = try InformationElement.decode(allocator, stream.reader());
-    defer decoded.deinit();
+    defer decoded.deinit(allocator);
 
-    try std.testing.expectEqual(IEType.recovery, decoded);
+    try std.testing.expectEqual(IEType.recovery, @as(IEType, decoded));
     try std.testing.expectEqual(@as(u8, 42), decoded.recovery);
 }

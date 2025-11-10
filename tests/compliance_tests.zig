@@ -69,7 +69,7 @@ test "3GPP TS 29.281 - Extension header format" {
     var buffer = std.ArrayList(u8).init(allocator);
     defer buffer.deinit();
 
-    try ext.encode(buffer.writer(), true);
+    try ext.encode(buffer.writer(), null); // null = no more headers after this
 
     // Extension header must be multiple of 4 bytes
     try testing.expect(buffer.items.len % 4 == 0);
@@ -122,12 +122,12 @@ test "3GPP TS 29.281 - Echo mechanism" {
     defer echo_resp.deinit();
 
     try testing.expect(echo_resp.information_elements.items.len > 0);
-    try testing.expectEqual(gtpu.ie.IEType.recovery, echo_resp.information_elements.items[0]);
+    try testing.expectEqual(gtpu.ie.IEType.recovery, @as(gtpu.ie.IEType, echo_resp.information_elements.items[0]));
 }
 
 // Test 7: Path Failure Detection (3GPP TS 29.281 Section 4.4)
 test "3GPP TS 29.281 - Path failure detection" {
-    const allocator = testing.allocator;
+    _ = testing.allocator; // const allocator = testing.allocator;
 
     const config = gtpu.path.PathConfig{
         .echo_interval_ms = 1000,

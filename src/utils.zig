@@ -157,12 +157,14 @@ pub const AntiReplayWindow = struct {
         }
 
         // Shift remaining bits
-        if (bit_shift > 0) {
+        if (bit_shift > 0 and bit_shift < 64) {
             var i = self.bitmap.len;
             while (i > 0) : (i -= 1) {
                 self.bitmap[i - 1] >>= bit_shift;
-                if (i > 1) {
-                    self.bitmap[i - 1] |= self.bitmap[i - 2] << (64 - bit_shift);
+                if (i > 1 and bit_shift > 0) {
+                    // Calculate complement shift amount, capped to valid u6 range
+                    const comp_shift = if (bit_shift >= 64) 0 else (64 - @as(u64, bit_shift));
+                    self.bitmap[i - 1] |= self.bitmap[i - 2] << @as(u6, @intCast(comp_shift));
                 }
             }
         }
@@ -194,7 +196,7 @@ pub const RateLimiter = struct {
     capacity: u64,        // Token capacity
     tokens: u64,          // Current tokens
     refill_rate: u64,     // Tokens per second
-    last_refill: i64,     // Last refill timestamp
+    last_refill: i128,    // Last refill timestamp
     mutex: std.Thread.Mutex = .{},
 
     pub fn init(capacity: u64, refill_rate: u64) RateLimiter {
