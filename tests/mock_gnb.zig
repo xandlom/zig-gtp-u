@@ -315,12 +315,11 @@ const MockGNB = struct {
         };
 
         // Create G-PDU message with extension headers
-        var msg = try gtpu.GtpuMessage.createGpdu(self.allocator, uplink_teid, payload);
+        var msg = gtpu.GtpuMessage.createGpdu(self.allocator, uplink_teid, payload);
         defer msg.deinit();
 
         // Add extension headers
-        msg.header.flags.extension_header = true;
-        try msg.extension_headers.append(pdu_container);
+        try msg.addExtensionHeader(pdu_container);
 
         var buffer = std.ArrayList(u8).init(self.allocator);
         defer buffer.deinit();
