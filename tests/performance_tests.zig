@@ -201,14 +201,14 @@ fn benchmarkConcurrentSessions(allocator: std.mem.Allocator) !void {
     var session_mgr = gtpu.SessionManager.init(allocator, &tunnel_mgr);
     defer session_mgr.deinit();
 
-    const num_sessions = 1000;
+    const num_sessions = 250; // PDU Session ID is u8 (0-255)
     const local_addr = try std.net.Address.parseIp("192.168.1.1", 2152);
     const remote_addr = try std.net.Address.parseIp("192.168.1.2", 2152);
 
     // Create sessions
     const create_start = timer.read();
     var i: u8 = 0;
-    while (i < num_sessions) : (i +%= 1) {
+    while (i < num_sessions) : (i += 1) {
         try session_mgr.createSession(i, .ipv4, "internet", local_addr, remote_addr);
 
         if (session_mgr.getSession(i)) |session| {
