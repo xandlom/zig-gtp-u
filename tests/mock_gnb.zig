@@ -73,6 +73,18 @@ const MockGNB = struct {
 
         try std.posix.bind(socket, &address.any, address.getOsSockLen());
 
+        // Set receive timeout to allow periodic checking of running flag
+        const timeout = std.posix.timeval{
+            .sec = 1,
+            .usec = 0,
+        };
+        try std.posix.setsockopt(
+            socket,
+            std.posix.SOL.SOCKET,
+            std.posix.SO.RCVTIMEO,
+            std.mem.asBytes(&timeout),
+        );
+
         var tunnel_mgr = gtpu.TunnelManager.init(allocator);
         errdefer tunnel_mgr.deinit();
 
@@ -137,6 +149,10 @@ const MockGNB = struct {
                 &src_addr,
                 &src_addr_len,
             ) catch |err| {
+                // Timeout is expected, just continue to check running flag
+                if (err == error.WouldBlock) {
+                    continue;
+                }
                 std.debug.print("Error receiving: {}\n", .{err});
                 _ = self.stats.errors.fetchAdd(1, .monotonic);
                 continue;
@@ -419,6 +435,7 @@ pub fn main() !void {
 
         fn handle(sig: c_int) callconv(.C) void {
             _ = sig;
+            std.debug.print("\n\nReceived Ctrl+C, shutting down gracefully...\n", .{});
             if (gnb_ptr) |g| {
                 g.stop();
             }
