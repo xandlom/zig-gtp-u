@@ -68,6 +68,20 @@ High-performance GPRS Tunneling Protocol User Plane (GTP-U) implementation for 5
   - Thread-safe managers
   - Atomic reference counting
 
+### Testing & Development
+
+- ✅ **End-to-End Testing**
+  - Mock gNodeB for traffic generation
+  - Mock UPF for packet processing
+  - Real-world 5G scenario simulation
+  - Comprehensive statistics tracking
+
+- ✅ **Test Coverage**
+  - 3GPP compliance test suite
+  - Wire format validation
+  - Performance benchmarks
+  - Integration tests
+
 ## Requirements
 
 - Zig 0.14.1 or later
@@ -80,7 +94,7 @@ High-performance GPRS Tunneling Protocol User Plane (GTP-U) implementation for 5
 git clone https://github.com/yourusername/zig-gtp-u.git
 cd zig-gtp-u
 
-# Build the library
+# Build the library and all executables (including mock-gnb and mock-upf)
 zig build
 
 # Run tests
@@ -92,6 +106,13 @@ zig build bench
 # Run example
 zig build run
 ```
+
+The build process creates:
+- **libgtpu.a** - Static library for integration
+- **gtpu-example** - Example usage
+- **gtpu-perf** - Performance benchmarks
+- **mock-upf** - Mock User Plane Function for e2e testing
+- **mock-gnb** - Mock gNodeB for e2e testing
 
 ## Quick Start
 
@@ -211,7 +232,8 @@ tests/
 ├── compliance_tests.zig    # 3GPP compliance tests
 ├── wire_format_tests.zig   # Wire format validation
 ├── performance_tests.zig   # Performance benchmarks
-└── mock_upf.zig           # Mock UPF for testing
+├── mock_upf.zig           # Mock UPF for e2e testing
+└── mock_gnb.zig           # Mock gNB for e2e testing
 ```
 
 ## Testing
@@ -242,14 +264,101 @@ Expected performance on modern hardware:
 - **Memory**: Efficient pooling with zero-copy
 - **Scalability**: 1,000+ concurrent sessions
 
-### Mock UPF Testing
+### End-to-End Testing
 
-Start the mock UPF for end-to-end testing:
+The project includes mock implementations of gNodeB and UPF for comprehensive end-to-end testing of the GTP-U protocol stack.
 
+#### Mock Applications
+
+**mock_upf** - Mock User Plane Function
+- Receives uplink G-PDUs from gNodeB
+- Processes QoS flows and extension headers
+- Handles Echo Request/Response for path management
+- Tracks comprehensive statistics
+
+**mock_gnb** - Mock gNodeB (5G Base Station)
+- Generates uplink traffic with configurable patterns
+- Adds PDU Session Container extension headers with QFI
+- Handles downlink G-PDUs from UPF
+- Supports graceful shutdown with Ctrl+C
+
+#### Running End-to-End Tests
+
+**Terminal 1: Start Mock UPF**
 ```bash
-zig build-exe tests/mock_upf.zig
-./mock_upf 0.0.0.0 2152
+# Build all mock applications
+zig build
+
+# Start mock UPF listening on port 2152
+./zig-out/bin/mock-upf 0.0.0.0 2152
 ```
+
+**Terminal 2: Start Mock gNB**
+```bash
+# Start mock gNB, connecting to UPF at 127.0.0.1:2152
+./zig-out/bin/mock-gnb 0.0.0.0 2153 127.0.0.1 2152
+```
+
+The mock gNB will automatically:
+1. Establish a test PDU session
+2. Send Echo Request to verify path to UPF
+3. Generate uplink traffic (1 packet/sec, 1024 bytes by default)
+4. Process downlink responses from UPF
+
+Press **Ctrl+C** on either application to gracefully shutdown and view statistics.
+
+**Example Output:**
+```
+=== Mock gNB Starting ===
+Mock gNB listening on 0.0.0.0:2153
+Mock gNB connected to UPF at 127.0.0.1:2152
+Created test session 1 with TEID UL: 0x5A3C8F21, DL: 0x7B4D9E32
+Sent Echo Request (seq: 1)
+Started traffic generation: session=1, interval=1000ms, size=1024 bytes
+Sent UL G-PDU (TEID: 0x5A3C8F21, 1024 bytes, QFI: 9)
+Received Echo Response (seq: 1)
+...
+^C
+Received Ctrl+C, shutting down gracefully...
+
+=== Mock gNB Statistics ===
+  Packets RX:    145
+  Packets TX:    148
+  Bytes RX:      58400
+  Bytes TX:      151552
+  Echo Req:      1
+  Echo Resp:     1
+  Uplink G-PDUs: 147
+  Downlink G-PDUs: 144
+  Errors:        0
+```
+
+#### E2E Test Architecture
+
+```
+┌─────────────┐                           ┌─────────────┐
+│  mock_gnb   │                           │  mock_upf   │
+│             │                           │             │
+│ • Session   │    GTP-U (N3 Interface)   │ • Session   │
+│   Mgmt      │◄─────────────────────────►│   Mgmt      │
+│ • Traffic   │                           │ • QoS Flow  │
+│   Gen       │   Uplink G-PDUs (QFI=9)   │   Process   │
+│ • QoS       │──────────────────────────►│ • Stats     │
+│   Mapping   │                           │   Tracking  │
+│             │   Downlink G-PDUs         │             │
+│ Port: 2153  │◄──────────────────────────│ Port: 2152  │
+└─────────────┘                           └─────────────┘
+```
+
+#### Test Scenarios Covered
+
+- ✅ PDU session establishment with uplink/downlink tunnels
+- ✅ Echo Request/Response path management
+- ✅ G-PDU encapsulation with PDU Session Container
+- ✅ QoS Flow Identifier (QFI) mapping for 5G
+- ✅ Extension header processing
+- ✅ Statistics tracking (packets, bytes, errors)
+- ✅ Graceful shutdown and cleanup
 
 ## 3GPP Compliance
 
@@ -350,6 +459,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Roadmap
 
+- [x] Mock gNodeB and UPF for end-to-end testing
 - [ ] PCAP file generation for Wireshark
 - [ ] IPv6 support enhancements
 - [ ] Additional 5G extension headers
