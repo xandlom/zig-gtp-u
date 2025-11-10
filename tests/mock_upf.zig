@@ -11,6 +11,7 @@ const MockUPF = struct {
     path_mgr: gtpu.PathManager,
     qos_mgr: gtpu.qos.QosFlowManager,
     packet_pool: gtpu.pool.PacketBufferPool,
+    pcap_capture: gtpu.pcap.PcapCapture,
 
     listen_address: std.net.Address,
     socket: std.posix.socket_t,
@@ -54,7 +55,7 @@ const MockUPF = struct {
         }
     };
 
-    pub fn init(allocator: std.mem.Allocator, listen_addr: []const u8, port: u16) !MockUPF {
+    pub fn init(allocator: std.mem.Allocator, listen_addr: []const u8, port: u16, pcap_file: ?[]const u8) !MockUPF {
         const address = try std.net.Address.parseIp(listen_addr, port);
 
         const socket = try std.posix.socket(
@@ -95,6 +96,9 @@ const MockUPF = struct {
         var packet_pool = try gtpu.pool.PacketBufferPool.init(allocator, 1000, 2048);
         errdefer packet_pool.deinit();
 
+        var pcap_capture = try gtpu.pcap.PcapCapture.init(allocator, pcap_file);
+        errdefer pcap_capture.deinit();
+
         return .{
             .allocator = allocator,
             .tunnel_mgr = tunnel_mgr,
@@ -102,6 +106,7 @@ const MockUPF = struct {
             .path_mgr = path_mgr,
             .qos_mgr = qos_mgr,
             .packet_pool = packet_pool,
+            .pcap_capture = pcap_capture,
             .listen_address = address,
             .socket = socket,
             .stats = Stats.init(),
@@ -114,6 +119,7 @@ const MockUPF = struct {
     }
 
     pub fn deinit(self: *MockUPF) void {
+        self.pcap_capture.deinit();
         std.posix.close(self.socket);
         self.packet_pool.deinit();
         self.qos_mgr.deinit();
@@ -150,6 +156,10 @@ const MockUPF = struct {
 
             _ = self.stats.packets_received.fetchAdd(1, .monotonic);
             _ = self.stats.bytes_received.fetchAdd(bytes_received, .monotonic);
+
+            // Capture received packet to PCAP
+            const src_address = std.net.Address.initPosix(@alignCast(&src_addr));
+            self.pcap_capture.capturePacket(src_address, self.listen_address, recv_buffer[0..bytes_received]);
 
             // Process packet
             self.processPacket(recv_buffer[0..bytes_received], src_addr) catch |err| {
@@ -194,6 +204,10 @@ const MockUPF = struct {
         defer buffer.deinit();
 
         try response.encode(buffer.writer());
+
+        // Capture sent packet to PCAP
+        const dst_address = std.net.Address.initPosix(@alignCast(&src_addr));
+        self.pcap_capture.capturePacket(self.listen_address, dst_address, buffer.items);
 
         _ = try std.posix.sendto(self.socket, buffer.items, 0, &src_addr, @sizeOf(std.posix.sockaddr));
 
@@ -293,9 +307,11 @@ pub fn main() !void {
     const port_str = args.next() orelse "2152";
     const port = try std.fmt.parseInt(u16, port_str, 10);
 
+    const pcap_file = args.next(); // Optional PCAP file path
+
     std.debug.print("=== Mock UPF Starting ===\n", .{});
 
-    var upf = try MockUPF.init(allocator, listen_addr, port);
+    var upf = try MockUPF.init(allocator, listen_addr, port, pcap_file);
     defer upf.deinit();
 
     // Initialize session manager (must be done after init returns)
