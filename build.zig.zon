@@ -1,5 +1,5 @@
 .{
-    .name = "zig-gtp-u",
+    .name = "zig_gtp_u",
     .version = "0.1.0",
     .minimum_zig_version = "0.14.1",
     .dependencies = .{},
@@ -8,7 +8,6 @@
         "build.zig.zon",
         "src",
         "tests",
-        "examples",
         "LICENSE",
         "README.md",
     },
