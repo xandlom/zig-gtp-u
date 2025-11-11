@@ -309,3 +309,52 @@ test "Session with QoS flows" {
     session.removeQosFlow(9);
     try std.testing.expectEqual(@as(usize, 0), session.qos_manager.getActiveFlows());
 }
+
+test "IPv6 PDU Session" {
+    const allocator = std.testing.allocator;
+
+    var session = try PduSession.init(allocator, 2, .ipv6, "internet");
+    defer session.deinit();
+
+    try std.testing.expectEqual(@as(u8, 2), session.id);
+    try std.testing.expectEqual(PduSessionType.ipv6, session.session_type);
+    try std.testing.expectEqual(SessionState.inactive, session.state);
+    try std.testing.expectEqualStrings("internet", session.dnn);
+}
+
+test "Dual-stack IPv4v6 PDU Session" {
+    const allocator = std.testing.allocator;
+
+    var session = try PduSession.init(allocator, 3, .ipv4v6, "internet");
+    defer session.deinit();
+
+    try std.testing.expectEqual(@as(u8, 3), session.id);
+    try std.testing.expectEqual(PduSessionType.ipv4v6, session.session_type);
+    try std.testing.expectEqual(SessionState.inactive, session.state);
+}
+
+test "Session Manager with IPv6" {
+    const allocator = std.testing.allocator;
+
+    var tunnel_mgr = tunnel.TunnelManager.init(allocator);
+    defer tunnel_mgr.deinit();
+
+    var session_mgr = SessionManager.init(allocator, &tunnel_mgr);
+    defer session_mgr.deinit();
+
+    const local_addr = try std.net.Address.parseIp6("2001:db8::1", 2152);
+    const remote_addr = try std.net.Address.parseIp6("2001:db8::2", 2152);
+
+    try session_mgr.createSession(1, .ipv6, "internet", local_addr, remote_addr);
+
+    try std.testing.expectEqual(@as(usize, 1), session_mgr.getSessionCount());
+
+    const session = session_mgr.getSession(1);
+    try std.testing.expect(session != null);
+    try std.testing.expectEqual(PduSessionType.ipv6, session.?.session_type);
+    try std.testing.expect(session.?.uplink_tunnel != null);
+    try std.testing.expect(session.?.downlink_tunnel != null);
+
+    try session_mgr.removeSession(1);
+    try std.testing.expectEqual(@as(usize, 0), session_mgr.getSessionCount());
+}

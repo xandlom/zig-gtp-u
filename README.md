@@ -16,6 +16,7 @@ High-performance GPRS Tunneling Protocol User Plane (GTP-U) implementation for 5
 - ✅ **5G Network Interfaces**
   - N3 interface (gNB ↔ UPF)
   - N9 interface (UPF ↔ UPF)
+  - Full IPv6 support (including dual-stack IPv4v6)
 
 - ✅ **Extension Headers**
   - PDU Session Container (5G)
@@ -164,7 +165,7 @@ defer tunnel_mgr.deinit();
 var session_mgr = gtpu.SessionManager.init(allocator, &tunnel_mgr);
 defer session_mgr.deinit();
 
-// Create a PDU session
+// Create a PDU session (IPv4)
 const local_addr = try std.net.Address.parseIp("192.168.1.1", 2152);
 const remote_addr = try std.net.Address.parseIp("192.168.1.2", 2152);
 
@@ -180,6 +181,28 @@ if (session_mgr.getSession(1)) |session| {
     try session.addQosFlow(qos_params);
     try session.activate();
 }
+```
+
+### IPv6 and Dual-Stack Support
+
+```zig
+const gtpu = @import("gtpu");
+
+// IPv6 session
+const local_v6 = try std.net.Address.parseIp6("2001:db8::1", 2152);
+const remote_v6 = try std.net.Address.parseIp6("2001:db8::2", 2152);
+
+try session_mgr.createSession(2, .ipv6, "internet", local_v6, remote_v6);
+
+// Dual-stack session (supports both IPv4 and IPv6)
+try session_mgr.createSession(3, .ipv4v6, "internet", local_v6, remote_v6);
+
+// PCAP capture works seamlessly with IPv6
+var pcap = try gtpu.pcap.PcapWriter.init("ipv6_traffic.pcap");
+defer pcap.deinit();
+
+// Captures both IPv4 and IPv6 packets automatically
+try pcap.writeUdpPacket(timestamp, local_v6, remote_v6, gtp_payload);
 ```
 
 ### Path Management with Echo
@@ -379,10 +402,11 @@ Both mock applications support optional PCAP capture for traffic analysis with W
 ```
 
 The PCAP files contain:
-- Complete UDP/IP/Ethernet encapsulation
+- Complete UDP/IP/Ethernet encapsulation (IPv4 and IPv6)
 - All GTP-U packets (Echo, G-PDU, End Marker, Error Indication)
 - Precise timestamps for latency analysis
 - Extension headers (PDU Session Container with QFI)
+- Full IPv6 support with correct checksums
 
 **Analyzing with Wireshark:**
 ```bash
@@ -501,7 +525,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [x] Mock gNodeB and UPF for end-to-end testing
 - [x] PCAP file generation for Wireshark
-- [ ] IPv6 support enhancements
+- [x] IPv6 support enhancements (complete IPv6 + dual-stack)
 - [ ] Additional 5G extension headers
 - [ ] Integration with PFCP (N4 interface)
 - [ ] Kubernetes deployment examples
