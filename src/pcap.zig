@@ -332,11 +332,15 @@ pub const PcapWriter = struct {
             sum += word;
         }
 
-        // IPv6 pseudo-header: UDP length (upper layer packet length, 32-bit)
-        sum += udp_length; // Upper 16 bits are 0
+        // IPv6 pseudo-header: Upper-layer packet length (32-bit, big-endian)
+        // Split into two 16-bit words: upper 16 bits (0) and lower 16 bits (udp_length)
+        sum += 0; // Upper 16 bits
+        sum += udp_length; // Lower 16 bits
 
-        // IPv6 pseudo-header: next header (protocol, padded to 32-bit)
-        sum += 17; // UDP protocol number
+        // IPv6 pseudo-header: Zero (24 bits) + Next Header (8 bits)
+        // This forms a 32-bit word: 0x00000011 for UDP (0x11 = 17)
+        sum += 0; // First 16 bits of zeros
+        sum += 17; // Last 8 bits of zeros + Next Header (UDP = 17)
 
         // UDP header
         sum += src_port;
