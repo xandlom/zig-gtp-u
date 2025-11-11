@@ -76,6 +76,25 @@ pub const PcapWriter = struct {
         }
     };
 
+    /// IPv6 header (40 bytes, fixed size)
+    const IPv6Header = struct {
+        version_tc_fl: u32, // Version (4 bits) + Traffic Class (8 bits) + Flow Label (20 bits)
+        payload_length: u16, // Payload length (UDP header + data)
+        next_header: u8, // Next header (17=UDP)
+        hop_limit: u8, // Hop limit
+        src_ip: [16]u8, // Source IP address
+        dst_ip: [16]u8, // Destination IP address
+
+        fn write(self: *const IPv6Header, writer: anytype) !void {
+            try writer.writeInt(u32, self.version_tc_fl, .big);
+            try writer.writeInt(u16, self.payload_length, .big);
+            try writer.writeByte(self.next_header);
+            try writer.writeByte(self.hop_limit);
+            try writer.writeAll(&self.src_ip);
+            try writer.writeAll(&self.dst_ip);
+        }
+    };
+
     /// UDP header (8 bytes)
     const UdpHeader = struct {
         src_port: u16, // Source port
@@ -146,8 +165,10 @@ pub const PcapWriter = struct {
         // Prepare headers based on IP version
         if (src_addr.any.family == std.posix.AF.INET and dst_addr.any.family == std.posix.AF.INET) {
             try self.writeIPv4Packet(ts_sec, ts_usec, src_addr, dst_addr, payload);
+        } else if (src_addr.any.family == std.posix.AF.INET6 and dst_addr.any.family == std.posix.AF.INET6) {
+            try self.writeIPv6Packet(ts_sec, ts_usec, src_addr, dst_addr, payload);
         } else {
-            // For now, we only support IPv4
+            // Mixed address families not supported
             return error.UnsupportedAddressFamily;
         }
 
@@ -219,6 +240,130 @@ pub const PcapWriter = struct {
 
         // Write payload (GTP-U packet)
         try self.file.writeAll(payload);
+    }
+
+    /// Write an IPv6 packet to PCAP
+    fn writeIPv6Packet(
+        self: *PcapWriter,
+        ts_sec: u32,
+        ts_usec: u32,
+        src_addr: std.net.Address,
+        dst_addr: std.net.Address,
+        payload: []const u8,
+    ) !void {
+        // Calculate packet sizes (wire format)
+        const eth_size: u32 = 14; // Ethernet: 6 + 6 + 2
+        const ip_size: u32 = 40; // IPv6 header (fixed size)
+        const udp_size: u32 = 8; // UDP header
+        const total_size = eth_size + ip_size + udp_size + payload.len;
+
+        // Write PCAP packet header
+        const writer = self.file.writer();
+        try writer.writeInt(u32, ts_sec, .little);
+        try writer.writeInt(u32, ts_usec, .little);
+        try writer.writeInt(u32, @intCast(total_size), .little); // incl_len
+        try writer.writeInt(u32, @intCast(total_size), .little); // orig_len
+
+        // Write Ethernet header (dummy MAC addresses)
+        const eth_header = EthernetHeader{
+            .dst_mac = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x01 },
+            .src_mac = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x02 },
+            .ethertype = 0x86DD, // IPv6
+        };
+        try eth_header.write(self.file.writer());
+
+        // Extract IPv6 addresses and ports
+        const src_ip = src_addr.in6.sa.addr;
+        const dst_ip = dst_addr.in6.sa.addr;
+        const src_port = src_addr.getPort();
+        const dst_port = dst_addr.getPort();
+
+        // Write IPv6 header
+        const payload_length: u16 = @intCast(udp_size + payload.len);
+        const ipv6_header = IPv6Header{
+            .version_tc_fl = 0x60000000, // Version 6, Traffic Class 0, Flow Label 0
+            .payload_length = payload_length,
+            .next_header = 17, // UDP
+            .hop_limit = 64,
+            .src_ip = src_ip,
+            .dst_ip = dst_ip,
+        };
+        try ipv6_header.write(self.file.writer());
+
+        // Write UDP header
+        const udp_length: u16 = @intCast(udp_size + payload.len);
+
+        // Calculate UDP checksum for IPv6 (mandatory)
+        const udp_checksum = calculateUDPv6Checksum(&ipv6_header, src_port, dst_port, udp_length, payload);
+
+        const udp_header = UdpHeader{
+            .src_port = src_port,
+            .dst_port = dst_port,
+            .length = udp_length,
+            .checksum = udp_checksum,
+        };
+        try udp_header.write(self.file.writer());
+
+        // Write payload (GTP-U packet)
+        try self.file.writeAll(payload);
+    }
+
+    /// Calculate UDP checksum for IPv6 (mandatory)
+    fn calculateUDPv6Checksum(
+        ipv6_header: *const IPv6Header,
+        src_port: u16,
+        dst_port: u16,
+        udp_length: u16,
+        payload: []const u8,
+    ) u16 {
+        var sum: u32 = 0;
+
+        // IPv6 pseudo-header: source address (16 bytes)
+        var i: usize = 0;
+        while (i < ipv6_header.src_ip.len) : (i += 2) {
+            const word: u16 = (@as(u16, ipv6_header.src_ip[i]) << 8) | @as(u16, ipv6_header.src_ip[i + 1]);
+            sum += word;
+        }
+
+        // IPv6 pseudo-header: destination address (16 bytes)
+        i = 0;
+        while (i < ipv6_header.dst_ip.len) : (i += 2) {
+            const word: u16 = (@as(u16, ipv6_header.dst_ip[i]) << 8) | @as(u16, ipv6_header.dst_ip[i + 1]);
+            sum += word;
+        }
+
+        // IPv6 pseudo-header: UDP length (upper layer packet length, 32-bit)
+        sum += udp_length; // Upper 16 bits are 0
+
+        // IPv6 pseudo-header: next header (protocol, padded to 32-bit)
+        sum += 17; // UDP protocol number
+
+        // UDP header
+        sum += src_port;
+        sum += dst_port;
+        sum += udp_length;
+        // checksum field is 0 during calculation
+
+        // UDP payload
+        i = 0;
+        while (i < payload.len) : (i += 2) {
+            if (i + 1 < payload.len) {
+                const word: u16 = (@as(u16, payload[i]) << 8) | @as(u16, payload[i + 1]);
+                sum += word;
+            } else {
+                // Odd number of bytes, pad with 0
+                const word: u16 = @as(u16, payload[i]) << 8;
+                sum += word;
+            }
+        }
+
+        // Add carry bits
+        while (sum >> 16 != 0) {
+            sum = (sum & 0xFFFF) + (sum >> 16);
+        }
+
+        // One's complement
+        return @intCast(~sum & 0xFFFF);
     }
 
     /// Calculate IPv4 header checksum
@@ -357,5 +502,56 @@ test "PCAP IPv4 packet write" {
 
         try writer.writeUdpPacket(std.time.nanoTimestamp(), src, dst, payload);
         try testing.expectEqual(@as(u64, 1), writer.getPacketCount());
+    }
+}
+
+test "PCAP IPv6 packet write" {
+    const testing = std.testing;
+
+    // Create temporary PCAP file
+    var tmp_dir = testing.tmpDir(.{});
+    var dir = tmp_dir.dir;
+    defer tmp_dir.cleanup();
+
+    const file_path = "test_ipv6_packet.pcap";
+    {
+        var writer = try PcapWriter.init(file_path);
+        defer writer.deinit();
+        defer dir.deleteFile(file_path) catch {};
+
+        const src = try std.net.Address.parseIp6("2001:db8::1", 2152);
+        const dst = try std.net.Address.parseIp6("2001:db8::2", 2152);
+        const payload = "Test GTP-U IPv6 payload";
+
+        try writer.writeUdpPacket(std.time.nanoTimestamp(), src, dst, payload);
+        try testing.expectEqual(@as(u64, 1), writer.getPacketCount());
+    }
+}
+
+test "PCAP mixed IPv4 and IPv6 packets" {
+    const testing = std.testing;
+
+    // Create temporary PCAP file
+    var tmp_dir = testing.tmpDir(.{});
+    var dir = tmp_dir.dir;
+    defer tmp_dir.cleanup();
+
+    const file_path = "test_mixed_packets.pcap";
+    {
+        var writer = try PcapWriter.init(file_path);
+        defer writer.deinit();
+        defer dir.deleteFile(file_path) catch {};
+
+        // Write IPv4 packet
+        const src_v4 = try std.net.Address.parseIp("192.168.1.1", 2152);
+        const dst_v4 = try std.net.Address.parseIp("192.168.1.2", 2152);
+        try writer.writeUdpPacket(std.time.nanoTimestamp(), src_v4, dst_v4, "IPv4 packet");
+
+        // Write IPv6 packet
+        const src_v6 = try std.net.Address.parseIp6("2001:db8::1", 2152);
+        const dst_v6 = try std.net.Address.parseIp6("2001:db8::2", 2152);
+        try writer.writeUdpPacket(std.time.nanoTimestamp(), src_v6, dst_v6, "IPv6 packet");
+
+        try testing.expectEqual(@as(u64, 2), writer.getPacketCount());
     }
 }
