@@ -291,12 +291,18 @@ zig build
 
 # Start mock UPF listening on port 2152
 ./zig-out/bin/mock-upf 0.0.0.0 2152
+
+# Optional: Enable PCAP capture
+./zig-out/bin/mock-upf 0.0.0.0 2152 upf-capture.pcap
 ```
 
 **Terminal 2: Start Mock gNB**
 ```bash
 # Start mock gNB, connecting to UPF at 127.0.0.1:2152
 ./zig-out/bin/mock-gnb 0.0.0.0 2153 127.0.0.1 2152
+
+# Optional: Enable PCAP capture
+./zig-out/bin/mock-gnb 0.0.0.0 2153 127.0.0.1 2152 gnb-capture.pcap
 ```
 
 The mock gNB will automatically:
@@ -359,6 +365,40 @@ Received Ctrl+C, shutting down gracefully...
 - ✅ Extension header processing
 - ✅ Statistics tracking (packets, bytes, errors)
 - ✅ Graceful shutdown and cleanup
+
+#### PCAP Capture for Wireshark
+
+Both mock applications support optional PCAP capture for traffic analysis with Wireshark:
+
+```bash
+# Capture GTP-U traffic from mock gNB
+./zig-out/bin/mock-gnb 0.0.0.0 2153 127.0.0.1 2152 gnb-traffic.pcap
+
+# Capture GTP-U traffic from mock UPF
+./zig-out/bin/mock-upf 0.0.0.0 2152 upf-traffic.pcap
+```
+
+The PCAP files contain:
+- Complete UDP/IP/Ethernet encapsulation
+- All GTP-U packets (Echo, G-PDU, End Marker, Error Indication)
+- Precise timestamps for latency analysis
+- Extension headers (PDU Session Container with QFI)
+
+**Analyzing with Wireshark:**
+```bash
+# Open PCAP file in Wireshark
+wireshark gnb-traffic.pcap
+
+# Filter for GTP-U traffic
+# Display filter: gtp
+# Or by message type: gtp.message == 0xff (Echo) or gtp.message == 0x01 (G-PDU)
+```
+
+The PCAP capture enables:
+- Protocol compliance verification
+- Performance analysis (latency, throughput)
+- Debugging extension headers and QoS flows
+- Integration testing with other 5G components
 
 ## 3GPP Compliance
 
@@ -460,7 +500,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Roadmap
 
 - [x] Mock gNodeB and UPF for end-to-end testing
-- [ ] PCAP file generation for Wireshark
+- [x] PCAP file generation for Wireshark
 - [ ] IPv6 support enhancements
 - [ ] Additional 5G extension headers
 - [ ] Integration with PFCP (N4 interface)

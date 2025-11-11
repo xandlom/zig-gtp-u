@@ -15,6 +15,7 @@ pub const qos = @import("qos.zig");
 pub const session = @import("session.zig");
 pub const pool = @import("pool.zig");
 pub const utils = @import("utils.zig");
+pub const pcap = @import("pcap.zig");
 
 // Re-export commonly used types
 pub const GtpuHeader = header.GtpuHeader;

@@ -311,12 +311,15 @@ To prevent deadlocks, locks must be acquired in this order:
 
 ## Future Enhancements
 
+### Completed Features
+
+1. ✅ **PCAP Support**: Wireshark integration with full packet capture
+
 ### Planned Features
 
-1. **PCAP Support**: Wireshark integration
-2. **Metrics Export**: Prometheus/OpenTelemetry
-3. **IPv6**: Enhanced IPv6 support
-4. **PFCP Integration**: N4 interface support
+1. **Metrics Export**: Prometheus/OpenTelemetry
+2. **IPv6**: Enhanced IPv6 support
+3. **PFCP Integration**: N4 interface support
 
 ### Performance Improvements
 
