@@ -97,6 +97,22 @@ pub const ExtensionHeaderType = enum(u8) {
     // PDU Session Container
     pdu_session_container = 0x85,
 
+    // Data Delivery Status (5G)
+    dl_data_delivery_status = 0x86,
+    ul_data_delivery_status = 0x87,
+
+    // Delay Indication (5G)
+    dl_delay = 0x88,
+    ul_delay = 0x89,
+
+    // Buffering Indication (5G)
+    dl_buffering_suggested_packets_count = 0x8A,
+    dl_buffering_duration = 0x8B,
+
+    // Sending Time (5G)
+    dl_sending_time = 0x8C,
+    ul_sending_time = 0x8D,
+
     // PDCP PDU Number
     pdcp_pdu_number = 0xC0,
 
@@ -118,6 +134,14 @@ pub const ExtensionHeaderType = enum(u8) {
             .xw_ran_container,
             .nr_ran_container,
             .pdu_session_container,
+            .dl_data_delivery_status,
+            .ul_data_delivery_status,
+            .dl_delay,
+            .ul_delay,
+            .dl_buffering_suggested_packets_count,
+            .dl_buffering_duration,
+            .dl_sending_time,
+            .ul_sending_time,
             .pdcp_pdu_number,
             .suspend_request,
             .suspend_response => true,
@@ -135,6 +159,14 @@ pub const ExtensionHeaderType = enum(u8) {
             .xw_ran_container => "XW RAN Container",
             .nr_ran_container => "NR RAN Container",
             .pdu_session_container => "PDU Session Container",
+            .dl_data_delivery_status => "DL Data Delivery Status",
+            .ul_data_delivery_status => "UL Data Delivery Status",
+            .dl_delay => "DL Delay",
+            .ul_delay => "UL Delay",
+            .dl_buffering_suggested_packets_count => "DL Buffering Suggested Packets Count",
+            .dl_buffering_duration => "DL Buffering Duration",
+            .dl_sending_time => "DL Sending Time",
+            .ul_sending_time => "UL Sending Time",
             .pdcp_pdu_number => "PDCP PDU Number",
             .suspend_request => "Suspend Request",
             .suspend_response => "Suspend Response",
