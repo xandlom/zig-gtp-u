@@ -115,18 +115,16 @@ pub const PcapWriter = struct {
 
     /// Write PCAP global header
     fn writeGlobalHeader(self: *PcapWriter) !void {
-        const header = GlobalHeader{
-            .magic_number = PCAP_MAGIC,
-            .version_major = VERSION_MAJOR,
-            .version_minor = VERSION_MINOR,
-            .thiszone = 0,
-            .sigfigs = 0,
-            .snaplen = SNAPLEN,
-            .network = LINKTYPE_ETHERNET,
-        };
+        const writer = self.file.writer();
 
-        const bytes = std.mem.asBytes(&header);
-        try self.file.writeAll(bytes);
+        // Write each field manually to avoid struct padding issues
+        try writer.writeInt(u32, PCAP_MAGIC, .little);
+        try writer.writeInt(u16, VERSION_MAJOR, .little);
+        try writer.writeInt(u16, VERSION_MINOR, .little);
+        try writer.writeInt(i32, 0, .little); // thiszone
+        try writer.writeInt(u32, 0, .little); // sigfigs
+        try writer.writeInt(u32, SNAPLEN, .little);
+        try writer.writeInt(u32, LINKTYPE_ETHERNET, .little);
     }
 
     /// Write a UDP packet (containing GTP-U) to the PCAP file
@@ -165,20 +163,18 @@ pub const PcapWriter = struct {
         dst_addr: std.net.Address,
         payload: []const u8,
     ) !void {
-        // Calculate packet sizes
-        const eth_size = @sizeOf(EthernetHeader);
-        const ip_size = @sizeOf(IPv4Header);
-        const udp_size = @sizeOf(UdpHeader);
+        // Calculate packet sizes (wire format, not struct sizes)
+        const eth_size: u32 = 14; // Ethernet: 6 + 6 + 2
+        const ip_size: u32 = 20; // IPv4 header without options
+        const udp_size: u32 = 8; // UDP header
         const total_size = eth_size + ip_size + udp_size + payload.len;
 
-        // Write PCAP packet header
-        const pkt_header = PacketHeader{
-            .ts_sec = ts_sec,
-            .ts_usec = ts_usec,
-            .incl_len = @intCast(total_size),
-            .orig_len = @intCast(total_size),
-        };
-        try self.file.writeAll(std.mem.asBytes(&pkt_header));
+        // Write PCAP packet header (manually to avoid padding)
+        const writer = self.file.writer();
+        try writer.writeInt(u32, ts_sec, .little);
+        try writer.writeInt(u32, ts_usec, .little);
+        try writer.writeInt(u32, @intCast(total_size), .little); // incl_len
+        try writer.writeInt(u32, @intCast(total_size), .little); // orig_len
 
         // Write Ethernet header (dummy MAC addresses)
         const eth_header = EthernetHeader{
@@ -324,14 +320,21 @@ test "PCAP global header" {
     };
     try writer.writeGlobalHeader();
 
-    // Read and verify
+    // Read and verify (should be exactly 24 bytes)
     try file.seekTo(0);
-    var header: PcapWriter.GlobalHeader = undefined;
-    const bytes_read = try file.readAll(std.mem.asBytes(&header));
-    try testing.expectEqual(@sizeOf(PcapWriter.GlobalHeader), bytes_read);
-    try testing.expectEqual(PcapWriter.PCAP_MAGIC, header.magic_number);
-    try testing.expectEqual(PcapWriter.VERSION_MAJOR, header.version_major);
-    try testing.expectEqual(PcapWriter.VERSION_MINOR, header.version_minor);
+    var buffer: [24]u8 = undefined;
+    const bytes_read = try file.readAll(&buffer);
+    try testing.expectEqual(@as(usize, 24), bytes_read);
+
+    // Verify magic number (first 4 bytes, little-endian)
+    const magic = std.mem.readInt(u32, buffer[0..4], .little);
+    try testing.expectEqual(PcapWriter.PCAP_MAGIC, magic);
+
+    // Verify version
+    const ver_major = std.mem.readInt(u16, buffer[4..6], .little);
+    const ver_minor = std.mem.readInt(u16, buffer[6..8], .little);
+    try testing.expectEqual(PcapWriter.VERSION_MAJOR, ver_major);
+    try testing.expectEqual(PcapWriter.VERSION_MINOR, ver_minor);
 }
 
 test "PCAP IPv4 packet write" {
