@@ -15,23 +15,46 @@ pub const PduSessionContainer = struct {
     spare: u8 = 0,
 
     pub fn encode(self: PduSessionContainer, writer: anytype) !void {
-        const byte1 = (@as(u8, self.pdu_type) << 4) | (@as(u8, self.qfi >> 2));
-        const byte2 = (@as(u8, @as(u2, @truncate(self.qfi))) << 6) |
-                      (@as(u8, self.ppi) << 3) |
-                      (@as(u8, @intFromBool(self.rqi)) << 2);
+        // Octet 1: PDU Type (bits 7-4) + Spare (bits 3-0)
+        const byte1 = @as(u8, self.pdu_type) << 4;
+
+        // Octet 2: Spare (bits 7-6) + QFI (bits 5-0)
+        const byte2 = self.qfi;
+
         try writer.writeByte(byte1);
         try writer.writeByte(byte2);
+
+        // Octet 3: Only for PDU Type 0 (DL)
+        // RQI (bit 7) + Spare (bit 6) + PPI (bits 5-3) + Spare (bits 2-0)
+        if (self.pdu_type == 0) {
+            const byte3 = (@as(u8, @intFromBool(self.rqi)) << 6) |
+                          (@as(u8, self.ppi) << 3);
+            try writer.writeByte(byte3);
+        }
     }
 
     pub fn decode(reader: anytype) !PduSessionContainer {
         const byte1 = try reader.readByte();
         const byte2 = try reader.readByte();
 
+        const pdu_type: u4 = @truncate(byte1 >> 4);
+        const qfi: u6 = @truncate(byte2 & 0x3F); // Bits 5-0
+
+        var rqi: bool = false;
+        var ppi: u3 = 0;
+
+        // Read octet 3 only for PDU Type 0 (DL)
+        if (pdu_type == 0) {
+            const byte3 = try reader.readByte();
+            rqi = (byte3 & 0x40) != 0; // Bit 6
+            ppi = @truncate((byte3 >> 3) & 0x07); // Bits 5-3
+        }
+
         return .{
-            .pdu_type = @truncate(byte1 >> 4),
-            .qfi = (@as(u6, @truncate(byte1)) << 2) | @as(u6, @truncate(byte2 >> 6)),
-            .ppi = @truncate(byte2 >> 3),
-            .rqi = (byte2 & 0x04) != 0,
+            .pdu_type = pdu_type,
+            .qfi = qfi,
+            .ppi = ppi,
+            .rqi = rqi,
         };
     }
 };
@@ -264,7 +287,7 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         // Total size = length * 4 (length field value times 4)
         // The length field includes itself in the count
         const content_size = switch (self) {
-            .pdu_session_container => 2,
+            .pdu_session_container => |psc| if (psc.pdu_type == 0) @as(usize, 3) else @as(usize, 2), // DL=3, UL=2
             .pdcp_pdu_number => 2,
             .long_pdcp_pdu_number => 3,
             .service_class_indicator => 1,
@@ -292,7 +315,7 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
 
     pub fn encode(self: ExtensionHeader, writer: anytype, next_ext_type: ?ExtensionHeaderType) !void {
         const content_size = switch (self) {
-            .pdu_session_container => 2,
+            .pdu_session_container => |psc| if (psc.pdu_type == 0) @as(usize, 3) else @as(usize, 2), // DL=3, UL=2
             .pdcp_pdu_number => 2,
             .long_pdcp_pdu_number => 3,
             .service_class_indicator => 1,
@@ -435,14 +458,14 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
     }
 };
 
-test "PDU Session Container encode/decode" {
+test "PDU Session Container encode/decode - UL (Type 1)" {
     const allocator = std.testing.allocator;
 
     const psc = PduSessionContainer{
         .pdu_type = 1,  // UL
         .qfi = 9,       // QFI 9
         .ppi = 0,
-        .rqi = true,
+        .rqi = false,   // Not used in UL
     };
 
     // Encode
@@ -450,12 +473,47 @@ test "PDU Session Container encode/decode" {
     defer buffer.deinit();
     try psc.encode(buffer.writer());
 
+    // Verify wire format
+    try std.testing.expectEqual(@as(usize, 2), buffer.items.len); // UL = 2 bytes
+    try std.testing.expectEqual(@as(u8, 0x10), buffer.items[0]); // PDU Type 1, Spare
+    try std.testing.expectEqual(@as(u8, 0x09), buffer.items[1]); // QFI 9
+
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
     const decoded = try PduSessionContainer.decode(stream.reader());
 
     try std.testing.expectEqual(psc.pdu_type, decoded.pdu_type);
     try std.testing.expectEqual(psc.qfi, decoded.qfi);
+}
+
+test "PDU Session Container encode/decode - DL (Type 0)" {
+    const allocator = std.testing.allocator;
+
+    const psc = PduSessionContainer{
+        .pdu_type = 0,  // DL
+        .qfi = 9,       // QFI 9
+        .ppi = 5,       // PPI 5
+        .rqi = true,    // RQI true
+    };
+
+    // Encode
+    var buffer = std.ArrayList(u8).init(allocator);
+    defer buffer.deinit();
+    try psc.encode(buffer.writer());
+
+    // Verify wire format
+    try std.testing.expectEqual(@as(usize, 3), buffer.items.len); // DL = 3 bytes
+    try std.testing.expectEqual(@as(u8, 0x00), buffer.items[0]); // PDU Type 0, Spare
+    try std.testing.expectEqual(@as(u8, 0x09), buffer.items[1]); // QFI 9
+    try std.testing.expectEqual(@as(u8, 0x68), buffer.items[2]); // RQI=1, PPI=5
+
+    // Decode
+    var stream = std.io.fixedBufferStream(buffer.items);
+    const decoded = try PduSessionContainer.decode(stream.reader());
+
+    try std.testing.expectEqual(psc.pdu_type, decoded.pdu_type);
+    try std.testing.expectEqual(psc.qfi, decoded.qfi);
+    try std.testing.expectEqual(psc.ppi, decoded.ppi);
     try std.testing.expectEqual(psc.rqi, decoded.rqi);
 }
 
