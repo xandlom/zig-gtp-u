@@ -26,6 +26,11 @@ High-performance GPRS Tunneling Protocol User Plane (GTP-U) implementation for 5
   - NR RAN Container
   - Service Class Indicator
   - UDP Port
+  - DL/UL Data Delivery Status (5G)
+  - DL/UL Delay Indication (5G)
+  - DL Buffering Suggested Packets Count (5G)
+  - DL Buffering Duration (5G)
+  - DL/UL Sending Time (5G)
 
 ### Advanced Features
 
@@ -526,7 +531,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [x] Mock gNodeB and UPF for end-to-end testing
 - [x] PCAP file generation for Wireshark
 - [x] IPv6 support enhancements (complete IPv6 + dual-stack)
-- [ ] Additional 5G extension headers
+- [x] Additional 5G extension headers (DL/UL Data Delivery Status, Delay, Buffering, Sending Time)
 - [ ] Integration with PFCP (N4 interface)
 - [ ] Kubernetes deployment examples
 - [ ] Prometheus metrics exporter
