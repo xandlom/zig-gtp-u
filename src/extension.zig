@@ -270,6 +270,8 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
             .no_more_headers, .reserved, .mbms_support_indication,
             .ran_container, .xw_ran_container, .nr_ran_container,
             .suspend_request, .suspend_response => return error.UnsupportedExtensionHeaderType,
+            // Handle unknown extension header types (non-exhaustive enum)
+            _ => return error.UnsupportedExtensionHeaderType,
         };
 
         // Skip any remaining padding
