@@ -232,6 +232,134 @@ if (path.needsEcho(now)) {
 }
 ```
 
+### UPF Integration
+
+The library provides comprehensive features for building User Plane Function (UPF) implementations. Here's a complete example showing how to process incoming GTP-U traffic with QoS flow handling:
+
+```zig
+const std = @import("std");
+const gtpu = @import("gtpu");
+
+pub fn processIncomingPacket(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    qos_mgr: *gtpu.qos.QosFlowManager,
+) !void {
+    // Decode the GTP-U message
+    var stream = std.io.fixedBufferStream(data);
+    var msg = try gtpu.GtpuMessage.decode(allocator, stream.reader());
+    defer msg.deinit();
+
+    // Extract QFI directly using the helper method
+    if (msg.getQFI()) |qfi| {
+        std.debug.print("Processing packet with QFI: {}\n", .{qfi});
+
+        // Route to appropriate QoS flow
+        if (qos_mgr.getFlow(qfi)) |flow| {
+            flow.stats.recordPacket(msg.payload.len, 1000, false);
+        }
+    }
+
+    // Or get full PDU Session Container for detailed info
+    if (msg.getPduSessionContainer()) |psc| {
+        const direction = if (psc.pdu_type == 0) "Downlink" else "Uplink";
+        std.debug.print("Direction: {s}, QFI: {}, RQI: {}\n", .{
+            direction, psc.qfi, psc.rqi,
+        });
+    }
+}
+```
+
+#### Handling Echo Requests/Responses
+
+Proper echo handling is essential for path management. When receiving an echo response, update the path state:
+
+```zig
+fn handleEchoResponse(
+    path_mgr: *gtpu.PathManager,
+    peer_address: std.net.Address,
+    sequence: u16,
+) void {
+    if (path_mgr.getPath(peer_address)) |path| {
+        const current_time = std.time.nanoTimestamp();
+        path.receiveEchoResponse(sequence, current_time) catch |err| {
+            std.debug.print("Echo mismatch: {}\n", .{err});
+        };
+
+        // Check path health after echo
+        const stats = path.getStats();
+        std.debug.print("Path RTT: avg={}us, loss={d:.1}%\n", .{
+            stats.avg_rtt_us,
+            stats.packetLossRate() * 100,
+        });
+    }
+}
+```
+
+#### Batch Processing for High-Throughput UPF
+
+For high-performance scenarios, use the batch processing API:
+
+```zig
+const gtpu = @import("gtpu");
+
+pub fn processBatch(allocator: std.mem.Allocator) !void {
+    var batch = gtpu.pool.MessageBatch.init(allocator);
+    defer batch.deinit();
+
+    var stats = gtpu.pool.BatchStats{};
+
+    // Add encoded messages to batch
+    // (in practice, these come from network I/O)
+    try batch.addEncoded(encoded_data_1, 0x12345678, 9);
+    try batch.addEncoded(encoded_data_2, 0x87654321, 5);
+    try batch.addEncoded(encoded_data_3, 0x12345678, 9);
+
+    // Group by QFI for QoS-based processing
+    var qfi_groups = try batch.groupByQFI(allocator);
+    defer {
+        var it = qfi_groups.valueIterator();
+        while (it.next()) |list| list.deinit();
+        qfi_groups.deinit();
+    }
+
+    // Process each QoS flow separately
+    var qfi_it = qfi_groups.iterator();
+    while (qfi_it.next()) |entry| {
+        const qfi = entry.key_ptr.*;
+        const messages = entry.value_ptr.items;
+        std.debug.print("QFI {}: {} messages\n", .{ qfi, messages.len });
+        // Apply QoS-specific processing...
+    }
+
+    // Or group by TEID for tunnel-based processing
+    var teid_groups = try batch.groupByTEID(allocator);
+    defer {
+        var it = teid_groups.valueIterator();
+        while (it.next()) |list| list.deinit();
+        teid_groups.deinit();
+    }
+
+    // Track statistics
+    stats.recordBatch(&batch);
+    std.debug.print("Processed {} batches, {} messages, {} bytes\n", .{
+        stats.batches_processed,
+        stats.messages_processed,
+        stats.bytes_processed,
+    });
+}
+```
+
+#### Complete UPF Example
+
+See `tests/mock_upf.zig` for a complete UPF implementation demonstrating:
+- Session management with uplink/downlink tunnels
+- Echo request/response with RTT tracking
+- QoS flow processing with QFI extraction
+- Extension header handling
+- PCAP capture for debugging
+- Graceful shutdown with statistics
+
 ## Architecture
 
 ### Module Structure

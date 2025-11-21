@@ -221,6 +221,42 @@ pub const GtpuMessage = struct {
 
         return msg;
     }
+
+    /// Extract QFI (QoS Flow Identifier) from PDU Session Container extension header.
+    /// Returns null if no PDU Session Container is present in the message.
+    /// This is essential for 5G QoS enforcement and flow-based differentiation.
+    pub fn getQFI(self: *const GtpuMessage) ?u6 {
+        for (self.extension_headers.items) |ext| {
+            switch (ext) {
+                .pdu_session_container => |psc| return psc.qfi,
+                else => {},
+            }
+        }
+        return null;
+    }
+
+    /// Extract full PDU Session Container information from the message.
+    /// Returns null if no PDU Session Container is present.
+    /// Provides access to QFI, PDU type (UL/DL), PPI, and RQI fields.
+    pub fn getPduSessionContainer(self: *const GtpuMessage) ?extension.PduSessionContainer {
+        for (self.extension_headers.items) |ext| {
+            switch (ext) {
+                .pdu_session_container => |psc| return psc,
+                else => {},
+            }
+        }
+        return null;
+    }
+
+    /// Check if message contains extension headers of a specific type.
+    pub fn hasExtensionHeaderType(self: *const GtpuMessage, ext_type: extension.ExtensionHeaderType) bool {
+        for (self.extension_headers.items) |ext| {
+            if (@as(extension.ExtensionHeaderType, ext) == ext_type) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 test "GtpuMessage echo request/response" {
@@ -264,4 +300,50 @@ test "GtpuMessage G-PDU" {
     try std.testing.expectEqual(MessageType.g_pdu, decoded.header.message_type);
     try std.testing.expectEqual(@as(u32, 0x12345678), decoded.header.teid);
     try std.testing.expectEqualStrings(payload, decoded.payload);
+}
+
+test "GtpuMessage QFI extraction" {
+    const allocator = std.testing.allocator;
+
+    // Create G-PDU with PDU Session Container
+    var msg = GtpuMessage.createGpdu(allocator, 0x12345678, "test payload");
+    defer msg.deinit();
+
+    // Add PDU Session Container with QFI = 9
+    const pdu_container = extension.ExtensionHeader{
+        .pdu_session_container = .{
+            .pdu_type = 1, // Uplink
+            .qfi = 9,
+            .ppi = 0,
+            .rqi = false,
+        },
+    };
+    try msg.addExtensionHeader(pdu_container);
+
+    // Test QFI extraction
+    const qfi = msg.getQFI();
+    try std.testing.expect(qfi != null);
+    try std.testing.expectEqual(@as(u6, 9), qfi.?);
+
+    // Test PDU Session Container extraction
+    const psc = msg.getPduSessionContainer();
+    try std.testing.expect(psc != null);
+    try std.testing.expectEqual(@as(u4, 1), psc.?.pdu_type);
+    try std.testing.expectEqual(@as(u6, 9), psc.?.qfi);
+
+    // Test extension header type check
+    try std.testing.expect(msg.hasExtensionHeaderType(.pdu_session_container));
+    try std.testing.expect(!msg.hasExtensionHeaderType(.pdcp_pdu_number));
+}
+
+test "GtpuMessage QFI extraction returns null when no PDU Session Container" {
+    const allocator = std.testing.allocator;
+
+    var msg = GtpuMessage.createGpdu(allocator, 0x12345678, "test payload");
+    defer msg.deinit();
+
+    // No extension headers added
+    try std.testing.expect(msg.getQFI() == null);
+    try std.testing.expect(msg.getPduSessionContainer() == null);
+    try std.testing.expect(!msg.hasExtensionHeaderType(.pdu_session_container));
 }

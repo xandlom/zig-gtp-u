@@ -234,7 +234,13 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
         next_type: ExtensionHeaderType,
     };
 
-    pub fn decode(reader: anytype, ext_type: ExtensionHeaderType) !DecodeResult {
+    pub const DecodeError = error{
+        UnsupportedExtensionHeaderType,
+        UnexpectedEof,
+        EndOfStream,
+    };
+
+    pub fn decode(reader: anytype, ext_type: ExtensionHeaderType) DecodeError!DecodeResult {
         const length = try reader.readByte(); // Length in 4-byte units
         // Total size is length * 4, which includes the length byte itself
         // Content size = total - length byte - next_type byte
@@ -260,7 +266,10 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
             .udp_port => .{
                 .udp_port = try UdpPortExtension.decode(lim_reader),
             },
-            else => @panic("Unknown extension header type"),
+            // Handle unsupported/unknown extension headers gracefully
+            .no_more_headers, .reserved, .mbms_support_indication,
+            .ran_container, .xw_ran_container, .nr_ran_container,
+            .suspend_request, .suspend_response => return error.UnsupportedExtensionHeaderType,
         };
 
         // Skip any remaining padding

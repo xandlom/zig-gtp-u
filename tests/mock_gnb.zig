@@ -230,9 +230,18 @@ const MockGNB = struct {
     }
 
     fn handleEchoResponse(self: *MockGNB, msg: *gtpu.GtpuMessage) !void {
-        _ = self;
         const sequence = msg.header.sequence_number orelse 0;
         std.debug.print("Received Echo Response (seq: {})\n", .{sequence});
+
+        // Update path state with echo response - critical for RTT measurement and path health
+        if (self.path_mgr.getPath(self.upf_address)) |path| {
+            const current_time = std.time.nanoTimestamp();
+            path.receiveEchoResponse(sequence, current_time) catch |err| {
+                std.debug.print("Echo response error: {} (seq mismatch or no pending echo)\n", .{err});
+            };
+        }
+
+        _ = self.stats.echo_responses.fetchAdd(1, .monotonic);
     }
 
     fn handleDownlinkGpdu(self: *MockGNB, msg: *gtpu.GtpuMessage, src_addr: std.posix.sockaddr) !void {
