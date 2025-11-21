@@ -180,7 +180,7 @@ const MockUPF = struct {
 
         switch (msg.header.message_type) {
             .echo_request => try self.handleEchoRequest(&msg, src_addr),
-            .echo_response => try self.handleEchoResponse(&msg),
+            .echo_response => try self.handleEchoResponse(&msg, src_addr),
             .g_pdu => try self.handleGpdu(&msg, src_addr),
             .end_marker => try self.handleEndMarker(&msg),
             .error_indication => try self.handleErrorIndication(&msg),
@@ -218,10 +218,20 @@ const MockUPF = struct {
         std.debug.print("Sent Echo Response (seq: {})\n", .{sequence});
     }
 
-    fn handleEchoResponse(self: *MockUPF, msg: *gtpu.GtpuMessage) !void {
-        _ = self;
+    fn handleEchoResponse(self: *MockUPF, msg: *gtpu.GtpuMessage, src_addr: std.posix.sockaddr) !void {
         const sequence = msg.header.sequence_number orelse 0;
         std.debug.print("Received Echo Response (seq: {})\n", .{sequence});
+
+        // Update path state with echo response - critical for RTT measurement and path health
+        const peer_address = std.net.Address.initPosix(@alignCast(&src_addr));
+        if (self.path_mgr.getPath(peer_address)) |path| {
+            const current_time = std.time.nanoTimestamp();
+            path.receiveEchoResponse(sequence, current_time) catch |err| {
+                std.debug.print("Echo response error: {} (seq mismatch or no pending echo)\n", .{err});
+            };
+        }
+
+        _ = self.stats.echo_responses.fetchAdd(1, .monotonic);
     }
 
     fn handleGpdu(self: *MockUPF, msg: *gtpu.GtpuMessage, src_addr: std.posix.sockaddr) !void {

@@ -257,6 +257,137 @@ pub const BatchProcessor = struct {
     }
 };
 
+// Batch message encoder/decoder for high-throughput scenarios
+pub const MessageBatch = struct {
+    messages: std.ArrayList(EncodedMessage),
+    allocator: std.mem.Allocator,
+    total_bytes: usize,
+
+    pub const EncodedMessage = struct {
+        data: []u8,
+        teid: u32,
+        qfi: ?u6,
+    };
+
+    pub fn init(allocator: std.mem.Allocator) MessageBatch {
+        return .{
+            .messages = std.ArrayList(EncodedMessage).init(allocator),
+            .allocator = allocator,
+            .total_bytes = 0,
+        };
+    }
+
+    pub fn deinit(self: *MessageBatch) void {
+        for (self.messages.items) |msg| {
+            self.allocator.free(msg.data);
+        }
+        self.messages.deinit();
+    }
+
+    /// Add a pre-encoded message to the batch
+    pub fn addEncoded(self: *MessageBatch, data: []const u8, teid: u32, qfi: ?u6) !void {
+        const copy = try self.allocator.dupe(u8, data);
+        try self.messages.append(.{
+            .data = copy,
+            .teid = teid,
+            .qfi = qfi,
+        });
+        self.total_bytes += data.len;
+    }
+
+    /// Get number of messages in batch
+    pub fn count(self: *const MessageBatch) usize {
+        return self.messages.items.len;
+    }
+
+    /// Get total encoded size of all messages
+    pub fn totalSize(self: *const MessageBatch) usize {
+        return self.total_bytes;
+    }
+
+    /// Clear the batch
+    pub fn clear(self: *MessageBatch) void {
+        for (self.messages.items) |msg| {
+            self.allocator.free(msg.data);
+        }
+        self.messages.clearRetainingCapacity();
+        self.total_bytes = 0;
+    }
+
+    /// Get messages grouped by QFI for QoS-based processing
+    pub fn groupByQFI(self: *const MessageBatch, allocator: std.mem.Allocator) !std.AutoHashMap(u6, std.ArrayList(*const EncodedMessage)) {
+        var groups = std.AutoHashMap(u6, std.ArrayList(*const EncodedMessage)).init(allocator);
+        errdefer {
+            var it = groups.valueIterator();
+            while (it.next()) |list| {
+                list.deinit();
+            }
+            groups.deinit();
+        }
+
+        for (self.messages.items) |*msg| {
+            if (msg.qfi) |qfi| {
+                const entry = try groups.getOrPut(qfi);
+                if (!entry.found_existing) {
+                    entry.value_ptr.* = std.ArrayList(*const EncodedMessage).init(allocator);
+                }
+                try entry.value_ptr.append(msg);
+            }
+        }
+
+        return groups;
+    }
+
+    /// Get messages grouped by TEID for tunnel-based processing
+    pub fn groupByTEID(self: *const MessageBatch, allocator: std.mem.Allocator) !std.AutoHashMap(u32, std.ArrayList(*const EncodedMessage)) {
+        var groups = std.AutoHashMap(u32, std.ArrayList(*const EncodedMessage)).init(allocator);
+        errdefer {
+            var it = groups.valueIterator();
+            while (it.next()) |list| {
+                list.deinit();
+            }
+            groups.deinit();
+        }
+
+        for (self.messages.items) |*msg| {
+            const entry = try groups.getOrPut(msg.teid);
+            if (!entry.found_existing) {
+                entry.value_ptr.* = std.ArrayList(*const EncodedMessage).init(allocator);
+            }
+            try entry.value_ptr.append(msg);
+        }
+
+        return groups;
+    }
+};
+
+/// Statistics for batch processing
+pub const BatchStats = struct {
+    batches_processed: u64 = 0,
+    messages_processed: u64 = 0,
+    bytes_processed: u64 = 0,
+    qfi_distribution: [64]u64 = [_]u64{0} ** 64,
+
+    pub fn recordBatch(self: *BatchStats, batch: *const MessageBatch) void {
+        self.batches_processed += 1;
+        self.messages_processed += batch.count();
+        self.bytes_processed += batch.totalSize();
+
+        for (batch.messages.items) |msg| {
+            if (msg.qfi) |qfi| {
+                self.qfi_distribution[qfi] += 1;
+            }
+        }
+    }
+
+    pub fn reset(self: *BatchStats) void {
+        self.batches_processed = 0;
+        self.messages_processed = 0;
+        self.bytes_processed = 0;
+        self.qfi_distribution = [_]u64{0} ** 64;
+    }
+};
+
 // Zero-copy buffer slice
 pub const BufferSlice = struct {
     buffer: *PacketBuffer,
@@ -372,4 +503,108 @@ test "BatchProcessor" {
 
     pool.release(buf1);
     pool.release(buf2);
+}
+
+test "MessageBatch basic operations" {
+    const allocator = std.testing.allocator;
+
+    var batch = MessageBatch.init(allocator);
+    defer batch.deinit();
+
+    // Add some encoded messages
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFF, 0x00, 0x10 }, 0x12345678, 9);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFF, 0x00, 0x08 }, 0x87654321, 5);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFF, 0x00, 0x04 }, 0x12345678, 9);
+
+    try std.testing.expectEqual(@as(usize, 3), batch.count());
+    try std.testing.expectEqual(@as(usize, 12), batch.totalSize());
+
+    // Clear and verify
+    batch.clear();
+    try std.testing.expectEqual(@as(usize, 0), batch.count());
+    try std.testing.expectEqual(@as(usize, 0), batch.totalSize());
+}
+
+test "MessageBatch groupByQFI" {
+    const allocator = std.testing.allocator;
+
+    var batch = MessageBatch.init(allocator);
+    defer batch.deinit();
+
+    // Add messages with different QFIs
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFF }, 0x11111111, 9);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFE }, 0x22222222, 5);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFD }, 0x33333333, 9);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFC }, 0x44444444, null); // No QFI
+
+    var groups = try batch.groupByQFI(allocator);
+    defer {
+        var it = groups.valueIterator();
+        while (it.next()) |list| {
+            list.deinit();
+        }
+        groups.deinit();
+    }
+
+    // QFI 9 should have 2 messages
+    try std.testing.expect(groups.get(9) != null);
+    try std.testing.expectEqual(@as(usize, 2), groups.get(9).?.items.len);
+
+    // QFI 5 should have 1 message
+    try std.testing.expect(groups.get(5) != null);
+    try std.testing.expectEqual(@as(usize, 1), groups.get(5).?.items.len);
+
+    // Message with null QFI should not be in any group
+    try std.testing.expectEqual(@as(usize, 2), groups.count());
+}
+
+test "MessageBatch groupByTEID" {
+    const allocator = std.testing.allocator;
+
+    var batch = MessageBatch.init(allocator);
+    defer batch.deinit();
+
+    // Add messages with different TEIDs
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFF }, 0xAAAAAAAA, 9);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFE }, 0xBBBBBBBB, 5);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFD }, 0xAAAAAAAA, 9);
+
+    var groups = try batch.groupByTEID(allocator);
+    defer {
+        var it = groups.valueIterator();
+        while (it.next()) |list| {
+            list.deinit();
+        }
+        groups.deinit();
+    }
+
+    // TEID 0xAAAAAAAA should have 2 messages
+    try std.testing.expect(groups.get(0xAAAAAAAA) != null);
+    try std.testing.expectEqual(@as(usize, 2), groups.get(0xAAAAAAAA).?.items.len);
+
+    // TEID 0xBBBBBBBB should have 1 message
+    try std.testing.expect(groups.get(0xBBBBBBBB) != null);
+    try std.testing.expectEqual(@as(usize, 1), groups.get(0xBBBBBBBB).?.items.len);
+}
+
+test "BatchStats tracking" {
+    const allocator = std.testing.allocator;
+
+    var stats = BatchStats{};
+    var batch = MessageBatch.init(allocator);
+    defer batch.deinit();
+
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFF, 0x00, 0x10 }, 0x12345678, 9);
+    try batch.addEncoded(&[_]u8{ 0x30, 0xFF, 0x00, 0x08 }, 0x87654321, 5);
+
+    stats.recordBatch(&batch);
+
+    try std.testing.expectEqual(@as(u64, 1), stats.batches_processed);
+    try std.testing.expectEqual(@as(u64, 2), stats.messages_processed);
+    try std.testing.expectEqual(@as(u64, 8), stats.bytes_processed);
+    try std.testing.expectEqual(@as(u64, 1), stats.qfi_distribution[9]);
+    try std.testing.expectEqual(@as(u64, 1), stats.qfi_distribution[5]);
+
+    stats.reset();
+    try std.testing.expectEqual(@as(u64, 0), stats.batches_processed);
 }
