@@ -8,17 +8,17 @@ pub const ExtensionHeaderType = protocol.ExtensionHeaderType;
 
 // PDU Session Container for 5G
 pub const PduSessionContainer = struct {
-    pdu_type: u4,       // PDU Type (0=DL, 1=UL)
-    qfi: u6,            // QoS Flow Identifier
-    ppi: u3,            // Paging Policy Indicator
-    rqi: bool,          // Reflective QoS Indicator
+    pdu_type: u4, // PDU Type (0=DL, 1=UL)
+    qfi: u6, // QoS Flow Identifier
+    ppi: u3, // Paging Policy Indicator
+    rqi: bool, // Reflective QoS Indicator
     spare: u8 = 0,
 
     pub fn encode(self: PduSessionContainer, writer: anytype) !void {
         const byte1 = (@as(u8, self.pdu_type) << 4) | (@as(u8, self.qfi >> 2));
         const byte2 = (@as(u8, @as(u2, @truncate(self.qfi))) << 6) |
-                      (@as(u8, self.ppi) << 3) |
-                      (@as(u8, @intFromBool(self.rqi)) << 2);
+            (@as(u8, self.ppi) << 3) |
+            (@as(u8, @intFromBool(self.rqi)) << 2);
         try writer.writeByte(byte1);
         try writer.writeByte(byte2);
     }
@@ -241,46 +241,35 @@ pub const ExtensionHeader = union(ExtensionHeaderType) {
     };
 
     pub fn decode(reader: anytype, ext_type: ExtensionHeaderType) DecodeError!DecodeResult {
-        const length = try reader.readByte(); // Length in 4-byte units
+        _ = try reader.readByte(); // Length in 4-byte units
         // Total size is length * 4, which includes the length byte itself
         // Content size = total - length byte - next_type byte
-        const content_size = (length * 4) - 1 - 1; // -1 for length byte, -1 for next_type byte
+        // const content_size = (length * 4) - 1 - 1; // -1 for length byte, -1 for next_type byte
 
-        // Create a limited reader for the content
-        var limited = std.io.limitedReader(reader, content_size);
-        const lim_reader = limited.reader();
-
+        // Decode the extension header based on type
         const header: ExtensionHeader = switch (ext_type) {
             .pdu_session_container => .{
-                .pdu_session_container = try PduSessionContainer.decode(lim_reader),
+                .pdu_session_container = try PduSessionContainer.decode(reader),
             },
             .pdcp_pdu_number => .{
-                .pdcp_pdu_number = try PdcpPduNumber.decode(lim_reader),
+                .pdcp_pdu_number = try PdcpPduNumber.decode(reader),
             },
             .long_pdcp_pdu_number => .{
-                .long_pdcp_pdu_number = try LongPdcpPduNumber.decode(lim_reader),
+                .long_pdcp_pdu_number = try LongPdcpPduNumber.decode(reader),
             },
             .service_class_indicator => .{
-                .service_class_indicator = try ServiceClassIndicator.decode(lim_reader),
+                .service_class_indicator = try ServiceClassIndicator.decode(reader),
             },
             .udp_port => .{
-                .udp_port = try UdpPortExtension.decode(lim_reader),
+                .udp_port = try UdpPortExtension.decode(reader),
             },
             // Handle unsupported/unknown extension headers gracefully
-            .no_more_headers, .reserved, .mbms_support_indication,
-            .ran_container, .xw_ran_container, .nr_ran_container,
-            .suspend_request, .suspend_response => return error.UnsupportedExtensionHeaderType,
+            .no_more_headers, .reserved, .mbms_support_indication, .ran_container, .xw_ran_container, .nr_ran_container, .suspend_request, .suspend_response => return error.UnsupportedExtensionHeaderType,
             // Handle unknown extension header types (non-exhaustive enum)
             _ => return error.UnsupportedExtensionHeaderType,
         };
 
-        // Skip any remaining padding
-        const remaining = limited.bytes_left;
-        var i: usize = 0;
-        while (i < remaining) : (i += 1) {
-            _ = try reader.readByte();
-        }
-
+        // Note: All bytes should have been consumed by the decode functions
         // Read next extension type
         const next_type_byte = try reader.readByte();
         const next_type: ExtensionHeaderType = if (next_type_byte == 0)
@@ -299,16 +288,16 @@ test "PDU Session Container encode/decode" {
     const allocator = std.testing.allocator;
 
     const psc = PduSessionContainer{
-        .pdu_type = 1,  // UL
-        .qfi = 9,       // QFI 9
+        .pdu_type = 1, // UL
+        .qfi = 9, // QFI 9
         .ppi = 0,
         .rqi = true,
     };
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try psc.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try psc.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
@@ -325,9 +314,9 @@ test "PDCP PDU Number encode/decode" {
     const ppn = PdcpPduNumber{ .pdu_number = 12345 };
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try ppn.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try ppn.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
@@ -345,9 +334,9 @@ test "Extension Header full encode/decode" {
     defer ext.deinit();
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try ext.encode(buffer.writer(), null); // null means this is the last extension
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try ext.encode(buffer.writer(allocator), null); // null means this is the last extension
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);

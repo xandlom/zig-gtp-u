@@ -256,17 +256,17 @@ pub const PathManager = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        var healthy = std.ArrayList(std.net.Address).init(allocator);
-        errdefer healthy.deinit();
+        var healthy: std.ArrayList(std.net.Address) = .empty;
+        errdefer healthy.deinit(allocator);
 
         var it = self.paths.valueIterator();
         while (it.next()) |path| {
             if (path.isHealthy()) {
-                try healthy.append(path.peer_address);
+                try healthy.append(allocator, path.peer_address);
             }
         }
 
-        return healthy.toOwnedSlice();
+        return healthy.toOwnedSlice(allocator);
     }
 };
 

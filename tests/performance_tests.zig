@@ -35,11 +35,11 @@ fn benchmarkPacketEncodeDecode(allocator: std.mem.Allocator) !void {
         var msg = gtpu.GtpuMessage.createGpdu(allocator, 0x12345678, payload);
         defer msg.deinit();
 
-        var buffer = std.ArrayList(u8).init(allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(allocator);
 
         const start = timer.read();
-        try msg.encode(buffer.writer());
+        try msg.encode(buffer.writer(allocator));
         encode_time += timer.read() - start;
     }
 
@@ -51,9 +51,9 @@ fn benchmarkPacketEncodeDecode(allocator: std.mem.Allocator) !void {
     var msg = gtpu.GtpuMessage.createGpdu(allocator, 0x12345678, payload);
     defer msg.deinit();
 
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try msg.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try msg.encode(buffer.writer(allocator));
 
     var decode_time: u64 = 0;
     i = 0;
@@ -167,10 +167,10 @@ fn benchmarkThroughput(allocator: std.mem.Allocator) !void {
         var msg = gtpu.GtpuMessage.createGpdu(allocator, 0x12345678, payload);
         defer msg.deinit();
 
-        var buffer = std.ArrayList(u8).init(allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(allocator);
 
-        try msg.encode(buffer.writer());
+        try msg.encode(buffer.writer(allocator));
         total_bytes += buffer.items.len;
     }
 

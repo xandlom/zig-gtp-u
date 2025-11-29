@@ -202,9 +202,9 @@ test "IE Recovery encode/decode" {
     const ie = InformationElement.initRecovery(42);
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try ie.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try ie.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);

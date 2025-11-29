@@ -200,10 +200,10 @@ const MockUPF = struct {
         var response = try gtpu.GtpuMessage.createEchoResponse(self.allocator, sequence);
         defer response.deinit();
 
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(self.allocator);
 
-        try response.encode(buffer.writer());
+        try response.encode(buffer.writer(self.allocator));
 
         // Capture sent packet to PCAP
         const dst_address = std.net.Address.initPosix(@alignCast(&src_addr));
@@ -335,7 +335,7 @@ pub fn main() !void {
     const signal_handler = struct {
         var upf_ptr: ?*MockUPF = null;
 
-        fn handle(sig: c_int) callconv(.C) void {
+        fn handle(sig: c_int) callconv(.c) void {
             _ = sig;
             std.debug.print("\n\nReceived Ctrl+C, shutting down gracefully...\n", .{});
             if (upf_ptr) |u| {
@@ -348,7 +348,7 @@ pub fn main() !void {
 
     const act = std.posix.Sigaction{
         .handler = .{ .handler = signal_handler.handle },
-        .mask = std.posix.empty_sigset,
+        .mask = std.mem.zeroes(std.posix.sigset_t),
         .flags = 0,
     };
     std.posix.sigaction(std.posix.SIG.INT, &act, null);

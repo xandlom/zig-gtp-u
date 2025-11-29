@@ -10,7 +10,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     std.debug.print("=== GTP-U for 5G Networks ===\n", .{});
-    std.debug.print("Version: {}\n\n", .{gtpu.version});
+    std.debug.print("Version: {any}\n\n", .{gtpu.version});
 
     // Initialize tunnel manager
     var tunnel_mgr = gtpu.TunnelManager.init(allocator);
@@ -88,10 +88,10 @@ pub fn main() !void {
     std.debug.print("  Extension Headers: {}\n", .{gpdu.extension_headers.items.len});
 
     // Encode the message
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
-    try gpdu.encode(buffer.writer());
+    try gpdu.encode(buffer.writer(allocator));
     std.debug.print("  Encoded size: {} bytes\n", .{buffer.items.len});
 
     // Example: Echo Request/Response
@@ -100,10 +100,10 @@ pub fn main() !void {
     var echo_req = try gtpu.GtpuMessage.createEchoRequest(allocator, 42);
     defer echo_req.deinit();
 
-    var echo_buffer = std.ArrayList(u8).init(allocator);
-    defer echo_buffer.deinit();
+    var echo_buffer: std.ArrayList(u8) = .empty;
+    defer echo_buffer.deinit(allocator);
 
-    try echo_req.encode(echo_buffer.writer());
+    try echo_req.encode(echo_buffer.writer(allocator));
     std.debug.print("Echo Request (seq: 42) encoded: {} bytes\n", .{echo_buffer.items.len});
 
     // Decode the echo request

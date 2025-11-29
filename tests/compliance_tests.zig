@@ -14,9 +14,9 @@ test "3GPP TS 29.281 - Header format compliance" {
     header.length = 100;
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try header.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try header.encode(buffer.writer(allocator));
 
     // Verify mandatory header size
     try testing.expectEqual(@as(usize, 8), buffer.items.len);
@@ -66,10 +66,10 @@ test "3GPP TS 29.281 - Extension header format" {
     };
     defer ext.deinit();
 
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
-    try ext.encode(buffer.writer(), null); // null = no more headers after this
+    try ext.encode(buffer.writer(allocator), null); // null = no more headers after this
 
     // Extension header must be multiple of 4 bytes
     try testing.expect(buffer.items.len % 4 == 0);
@@ -90,10 +90,10 @@ test "3GPP TS 29.281 - PDU Session Container" {
         .rqi = false,
     };
 
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
-    try psc.encode(buffer.writer());
+    try psc.encode(buffer.writer(allocator));
 
     // PDU Session Container is 2 bytes
     try testing.expectEqual(@as(usize, 2), buffer.items.len);
@@ -218,10 +218,10 @@ test "3GPP TS 29.281 - Mandatory Information Elements" {
 
     // Recovery IE
     const recovery = gtpu.ie.InformationElement.initRecovery(0);
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
-    try recovery.encode(buffer.writer());
+    try recovery.encode(buffer.writer(allocator));
 
     // IE format: Type (1) + Length (2) + Value
     try testing.expect(buffer.items.len >= 3);

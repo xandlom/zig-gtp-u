@@ -6,11 +6,14 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Main GTP-U library
-    const gtpu_lib = b.addStaticLibrary(.{
+    const gtpu_lib = b.addLibrary(.{
         .name = "gtpu",
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .linkage = .static,
     });
     b.installArtifact(gtpu_lib);
 
@@ -22,9 +25,11 @@ pub fn build(b: *std.Build) void {
     // Example executable
     const example_exe = b.addExecutable(.{
         .name = "gtpu-example",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     example_exe.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(example_exe);
@@ -40,26 +45,32 @@ pub fn build(b: *std.Build) void {
 
     // Unit tests
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
     // Compliance tests
     const compliance_tests = b.addTest(.{
-        .root_source_file = b.path("tests/compliance_tests.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/compliance_tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     compliance_tests.root_module.addImport("gtpu", gtpu_module);
     const run_compliance_tests = b.addRunArtifact(compliance_tests);
 
     // Wire format tests
     const wire_tests = b.addTest(.{
-        .root_source_file = b.path("tests/wire_format_tests.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/wire_format_tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     wire_tests.root_module.addImport("gtpu", gtpu_module);
     const run_wire_tests = b.addRunArtifact(wire_tests);
@@ -67,9 +78,11 @@ pub fn build(b: *std.Build) void {
     // Performance tests
     const perf_tests = b.addExecutable(.{
         .name = "gtpu-perf",
-        .root_source_file = b.path("tests/performance_tests.zig"),
-        .target = target,
-        .optimize = .ReleaseFast,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/performance_tests.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+        }),
     });
     perf_tests.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(perf_tests);
@@ -89,9 +102,11 @@ pub fn build(b: *std.Build) void {
     // MockUPF executable
     const mock_upf = b.addExecutable(.{
         .name = "mock-upf",
-        .root_source_file = b.path("tests/mock_upf.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/mock_upf.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     mock_upf.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(mock_upf);
@@ -99,9 +114,11 @@ pub fn build(b: *std.Build) void {
     // MockGNB executable
     const mock_gnb = b.addExecutable(.{
         .name = "mock-gnb",
-        .root_source_file = b.path("tests/mock_gnb.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/mock_gnb.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     mock_gnb.root_module.addImport("gtpu", gtpu_module);
     b.installArtifact(mock_gnb);

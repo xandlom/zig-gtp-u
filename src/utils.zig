@@ -377,7 +377,7 @@ test "Rate limiter" {
     try std.testing.expect(!limiter.tryConsume(1));
 
     // Wait for refill (in real scenario)
-    std.time.sleep(std.time.ns_per_s / 5); // 200ms
+    std.Thread.sleep(std.time.ns_per_s / 5); // 200ms
 
     // Should have some tokens now
     try std.testing.expect(limiter.tryConsume(1));

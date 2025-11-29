@@ -107,9 +107,9 @@ test "Wire format - Encode/Decode round-trip G-PDU" {
     defer original.deinit();
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try original.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try original.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
@@ -147,9 +147,9 @@ test "Wire format - G-PDU with extension headers" {
     try msg.addExtensionHeader(pdcp);
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try msg.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try msg.encode(buffer.writer(allocator));
 
     // Verify extension header flag is set
     try testing.expect(msg.header.flags.e);
@@ -171,9 +171,9 @@ test "Wire format - Echo with sequence number wrap-around" {
     var echo1 = try gtpu.GtpuMessage.createEchoRequest(allocator, 0xFFFE);
     defer echo1.deinit();
 
-    var buffer1 = std.ArrayList(u8).init(allocator);
-    defer buffer1.deinit();
-    try echo1.encode(buffer1.writer());
+    var buffer1: std.ArrayList(u8) = .empty;
+    defer buffer1.deinit(allocator);
+    try echo1.encode(buffer1.writer(allocator));
 
     var stream1 = std.io.fixedBufferStream(buffer1.items);
     var decoded1 = try gtpu.GtpuMessage.decode(allocator, stream1.reader());
@@ -185,9 +185,9 @@ test "Wire format - Echo with sequence number wrap-around" {
     var echo2 = try gtpu.GtpuMessage.createEchoRequest(allocator, 0xFFFF);
     defer echo2.deinit();
 
-    var buffer2 = std.ArrayList(u8).init(allocator);
-    defer buffer2.deinit();
-    try echo2.encode(buffer2.writer());
+    var buffer2: std.ArrayList(u8) = .empty;
+    defer buffer2.deinit(allocator);
+    try echo2.encode(buffer2.writer(allocator));
 
     var stream2 = std.io.fixedBufferStream(buffer2.items);
     var decoded2 = try gtpu.GtpuMessage.decode(allocator, stream2.reader());
@@ -210,9 +210,9 @@ test "Wire format - Multiple Information Elements" {
     try msg.addInformationElement(recovery_ie);
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try msg.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try msg.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
@@ -246,9 +246,9 @@ test "Wire format - Byte alignment verification" {
             msg.header.sequence_number = 1;
         }
 
-        var buffer = std.ArrayList(u8).init(allocator);
-        defer buffer.deinit();
-        try msg.encode(buffer.writer());
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(allocator);
+        try msg.encode(buffer.writer(allocator));
 
         // Minimum header is 8 bytes, with optional fields it's 12 bytes
         const expected_min: usize = if (msg.header.flags.hasOptionalFields()) 12 else 8;
@@ -263,9 +263,9 @@ test "Wire format - TEID byte order (big-endian)" {
     var msg = gtpu.GtpuMessage.createGpdu(allocator, teid, "test");
     defer msg.deinit();
 
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try msg.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try msg.encode(buffer.writer(allocator));
 
     // TEID is at bytes 4-7 in the header
     try testing.expectEqual(@as(u8, 0x12), buffer.items[4]);
@@ -281,9 +281,9 @@ test "Wire format - Length field excludes mandatory header" {
     var msg = gtpu.GtpuMessage.createGpdu(allocator, 0x11111111, payload);
     defer msg.deinit();
 
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try msg.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try msg.encode(buffer.writer(allocator));
 
     // Length is at bytes 2-3
     const length = (@as(u16, buffer.items[2]) << 8) | buffer.items[3];

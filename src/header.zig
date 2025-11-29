@@ -129,10 +129,10 @@ test "GtpuHeader basic encode/decode" {
     header.length = 100;
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
-    try header.encode(buffer.writer());
+    try header.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
@@ -155,10 +155,10 @@ test "GtpuHeader with optional fields" {
     header.next_extension_type = .pdcp_pdu_number;
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
 
-    try header.encode(buffer.writer());
+    try header.encode(buffer.writer(allocator));
 
     // Verify size
     try std.testing.expectEqual(GtpuHeader.MANDATORY_SIZE + GtpuHeader.OPTIONAL_SIZE, buffer.items.len);

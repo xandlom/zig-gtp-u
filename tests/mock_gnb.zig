@@ -211,10 +211,10 @@ const MockGNB = struct {
         var response = try gtpu.GtpuMessage.createEchoResponse(self.allocator, sequence);
         defer response.deinit();
 
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(self.allocator);
 
-        try response.encode(buffer.writer());
+        try response.encode(buffer.writer(self.allocator));
 
         // Capture sent packet to PCAP
         const dst_address = std.net.Address.initPosix(@alignCast(&src_addr));
@@ -316,10 +316,10 @@ const MockGNB = struct {
         var msg = try gtpu.GtpuMessage.createEchoRequest(self.allocator, sequence);
         defer msg.deinit();
 
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(self.allocator);
 
-        try msg.encode(buffer.writer());
+        try msg.encode(buffer.writer(self.allocator));
 
         // Capture sent packet to PCAP
         self.pcap_capture.capturePacket(self.listen_address, self.upf_address, buffer.items);
@@ -363,10 +363,10 @@ const MockGNB = struct {
         // Add extension headers
         try msg.addExtensionHeader(pdu_container);
 
-        var buffer = std.ArrayList(u8).init(self.allocator);
-        defer buffer.deinit();
+        var buffer: std.ArrayList(u8) = .empty;
+        defer buffer.deinit(self.allocator);
 
-        try msg.encode(buffer.writer());
+        try msg.encode(buffer.writer(self.allocator));
 
         // Capture sent packet to PCAP
         self.pcap_capture.capturePacket(self.listen_address, self.upf_address, buffer.items);
@@ -418,7 +418,7 @@ const MockGNB = struct {
             counter += 1;
 
             // Sleep for the specified interval
-            std.time.sleep(interval_ms * std.time.ns_per_ms);
+            std.Thread.sleep(interval_ms * std.time.ns_per_ms);
         }
     }
 };
@@ -464,7 +464,7 @@ pub fn main() !void {
     const signal_handler = struct {
         var gnb_ptr: ?*MockGNB = null;
 
-        fn handle(sig: c_int) callconv(.C) void {
+        fn handle(sig: c_int) callconv(.c) void {
             _ = sig;
             std.debug.print("\n\nReceived Ctrl+C, shutting down gracefully...\n", .{});
             if (gnb_ptr) |g| {
@@ -477,7 +477,7 @@ pub fn main() !void {
 
     const act = std.posix.Sigaction{
         .handler = .{ .handler = signal_handler.handle },
-        .mask = std.posix.empty_sigset,
+        .mask = std.mem.zeroes(std.posix.sigset_t),
         .flags = 0,
     };
     std.posix.sigaction(std.posix.SIG.INT, &act, null);

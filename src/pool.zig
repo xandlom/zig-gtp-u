@@ -271,7 +271,7 @@ pub const MessageBatch = struct {
 
     pub fn init(allocator: std.mem.Allocator) MessageBatch {
         return .{
-            .messages = std.ArrayList(EncodedMessage).init(allocator),
+            .messages = .empty,
             .allocator = allocator,
             .total_bytes = 0,
         };
@@ -281,13 +281,13 @@ pub const MessageBatch = struct {
         for (self.messages.items) |msg| {
             self.allocator.free(msg.data);
         }
-        self.messages.deinit();
+        self.messages.deinit(self.allocator);
     }
 
     /// Add a pre-encoded message to the batch
     pub fn addEncoded(self: *MessageBatch, data: []const u8, teid: u32, qfi: ?u6) !void {
         const copy = try self.allocator.dupe(u8, data);
-        try self.messages.append(.{
+        try self.messages.append(self.allocator, .{
             .data = copy,
             .teid = teid,
             .qfi = qfi,
@@ -320,7 +320,7 @@ pub const MessageBatch = struct {
         errdefer {
             var it = groups.valueIterator();
             while (it.next()) |list| {
-                list.deinit();
+                list.deinit(allocator);
             }
             groups.deinit();
         }
@@ -329,9 +329,9 @@ pub const MessageBatch = struct {
             if (msg.qfi) |qfi| {
                 const entry = try groups.getOrPut(qfi);
                 if (!entry.found_existing) {
-                    entry.value_ptr.* = std.ArrayList(*const EncodedMessage).init(allocator);
+                    entry.value_ptr.* = .empty;
                 }
-                try entry.value_ptr.append(msg);
+                try entry.value_ptr.append(allocator, msg);
             }
         }
 
@@ -344,7 +344,7 @@ pub const MessageBatch = struct {
         errdefer {
             var it = groups.valueIterator();
             while (it.next()) |list| {
-                list.deinit();
+                list.deinit(allocator);
             }
             groups.deinit();
         }
@@ -352,9 +352,9 @@ pub const MessageBatch = struct {
         for (self.messages.items) |*msg| {
             const entry = try groups.getOrPut(msg.teid);
             if (!entry.found_existing) {
-                entry.value_ptr.* = std.ArrayList(*const EncodedMessage).init(allocator);
+                entry.value_ptr.* = .empty;
             }
-            try entry.value_ptr.append(msg);
+            try entry.value_ptr.append(allocator, msg);
         }
 
         return groups;
@@ -541,7 +541,7 @@ test "MessageBatch groupByQFI" {
     defer {
         var it = groups.valueIterator();
         while (it.next()) |list| {
-            list.deinit();
+            list.deinit(allocator);
         }
         groups.deinit();
     }
@@ -573,7 +573,7 @@ test "MessageBatch groupByTEID" {
     defer {
         var it = groups.valueIterator();
         while (it.next()) |list| {
-            list.deinit();
+            list.deinit(allocator);
         }
         groups.deinit();
     }

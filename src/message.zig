@@ -22,8 +22,8 @@ pub const GtpuMessage = struct {
     pub fn init(allocator: std.mem.Allocator, message_type: MessageType, teid: u32) GtpuMessage {
         return .{
             .header = header.GtpuHeader.init(message_type, teid),
-            .extension_headers = std.ArrayList(extension.ExtensionHeader).init(allocator),
-            .information_elements = std.ArrayList(ie.InformationElement).init(allocator),
+            .extension_headers = .empty,
+            .information_elements = .empty,
             .payload = &[_]u8{},
             .owns_payload = false,
             .allocator = allocator,
@@ -35,13 +35,13 @@ pub const GtpuMessage = struct {
         for (self.extension_headers.items) |*ext| {
             ext.deinit();
         }
-        self.extension_headers.deinit();
+        self.extension_headers.deinit(self.allocator);
 
         // Free information elements
         for (self.information_elements.items) |*elem| {
             elem.deinit(self.allocator);
         }
-        self.information_elements.deinit();
+        self.information_elements.deinit(self.allocator);
 
         // Free payload if we own it
         if (self.owns_payload and self.payload.len > 0) {
@@ -60,13 +60,13 @@ pub const GtpuMessage = struct {
             self.header.next_extension_type = @as(extension.ExtensionHeaderType, ext);
             self.header.flags.s = true; // Extension headers require optional fields
         }
-        try self.extension_headers.append(ext);
+        try self.extension_headers.append(self.allocator, ext);
         self.header.flags.e = true;
         self.updateLength();
     }
 
     pub fn addInformationElement(self: *GtpuMessage, elem: ie.InformationElement) !void {
-        try self.information_elements.append(elem);
+        try self.information_elements.append(self.allocator, elem);
         self.updateLength();
     }
 
@@ -147,7 +147,7 @@ pub const GtpuMessage = struct {
                 if (ext_size > remaining_length) return error.InvalidLength;
                 remaining_length -= ext_size;
 
-                try msg.extension_headers.append(decode_result.header);
+                try msg.extension_headers.append(allocator, decode_result.header);
                 next_type = decode_result.next_type;
             }
         }
@@ -169,7 +169,7 @@ pub const GtpuMessage = struct {
                 const elem_size = elem.size();
                 if (elem_size > remaining_length) return error.InvalidLength;
                 remaining_length -= elem_size;
-                try msg.information_elements.append(elem);
+                try msg.information_elements.append(allocator, elem);
             }
         }
 
@@ -267,9 +267,9 @@ test "GtpuMessage echo request/response" {
     defer request.deinit();
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try request.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try request.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);
@@ -288,9 +288,9 @@ test "GtpuMessage G-PDU" {
     defer msg.deinit();
 
     // Encode
-    var buffer = std.ArrayList(u8).init(allocator);
-    defer buffer.deinit();
-    try msg.encode(buffer.writer());
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(allocator);
+    try msg.encode(buffer.writer(allocator));
 
     // Decode
     var stream = std.io.fixedBufferStream(buffer.items);

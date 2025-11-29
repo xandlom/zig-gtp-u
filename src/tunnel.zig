@@ -116,13 +116,13 @@ pub const Tunnel = struct {
                 .created_at = std.time.nanoTimestamp(),
                 .last_activity = std.time.nanoTimestamp(),
             },
-            .qos_flows = std.ArrayList(qos.QFI).init(allocator),
+            .qos_flows = .empty,
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *Tunnel) void {
-        self.qos_flows.deinit();
+        self.qos_flows.deinit(self.allocator);
     }
 
     pub fn transitionTo(self: *Tunnel, new_state: TunnelState) !void {
@@ -155,7 +155,7 @@ pub const Tunnel = struct {
             if (existing_qfi == qfi) return;
         }
 
-        try self.qos_flows.append(qfi);
+        try self.qos_flows.append(self.allocator, qfi);
     }
 
     pub fn removeQosFlow(self: *Tunnel, qfi: qos.QFI) void {
@@ -278,13 +278,13 @@ pub const TunnelManager = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        var to_remove = std.ArrayList(TEID).init(self.allocator);
-        defer to_remove.deinit();
+        var to_remove: std.ArrayList(TEID) = .empty;
+        defer to_remove.deinit(self.allocator);
 
         var it = self.tunnels.iterator();
         while (it.next()) |entry| {
             if (entry.value_ptr.isIdle()) {
-                try to_remove.append(entry.key_ptr.*);
+                try to_remove.append(self.allocator, entry.key_ptr.*);
             }
         }
 

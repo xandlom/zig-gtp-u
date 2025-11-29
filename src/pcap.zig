@@ -134,7 +134,9 @@ pub const PcapWriter = struct {
 
     /// Write PCAP global header
     fn writeGlobalHeader(self: *PcapWriter) !void {
-        const writer = self.file.writer();
+        var buffer: [4096]u8 = undefined;
+        var file_writer = self.file.writer(&buffer);
+        const writer = &file_writer.interface;
 
         // Write each field manually to avoid struct padding issues
         try writer.writeInt(u32, PCAP_MAGIC, .little);
@@ -144,6 +146,8 @@ pub const PcapWriter = struct {
         try writer.writeInt(u32, 0, .little); // sigfigs
         try writer.writeInt(u32, SNAPLEN, .little);
         try writer.writeInt(u32, LINKTYPE_ETHERNET, .little);
+
+        try writer.flush();
     }
 
     /// Write a UDP packet (containing GTP-U) to the PCAP file
@@ -190,8 +194,11 @@ pub const PcapWriter = struct {
         const udp_size: u32 = 8; // UDP header
         const total_size = eth_size + ip_size + udp_size + payload.len;
 
+        var buffer: [4096]u8 = undefined;
+        var file_writer = self.file.writer(&buffer);
+        const writer = &file_writer.interface;
+
         // Write PCAP packet header (manually to avoid padding)
-        const writer = self.file.writer();
         try writer.writeInt(u32, ts_sec, .little);
         try writer.writeInt(u32, ts_usec, .little);
         try writer.writeInt(u32, @intCast(total_size), .little); // incl_len
@@ -203,7 +210,7 @@ pub const PcapWriter = struct {
             .src_mac = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x02 },
             .ethertype = 0x0800, // IPv4
         };
-        try eth_header.write(self.file.writer());
+        try eth_header.write(writer);
 
         // Extract IP addresses and ports
         const src_ip = src_addr.in.sa.addr;
@@ -226,7 +233,7 @@ pub const PcapWriter = struct {
             .dst_ip = @bitCast(dst_ip),
         };
         ip_header.checksum = calculateIPv4Checksum(&ip_header);
-        try ip_header.write(self.file.writer());
+        try ip_header.write(writer);
 
         // Write UDP header
         const udp_length: u16 = @intCast(udp_size + payload.len);
@@ -236,10 +243,12 @@ pub const PcapWriter = struct {
             .length = udp_length,
             .checksum = 0, // Optional for IPv4
         };
-        try udp_header.write(self.file.writer());
+        try udp_header.write(writer);
 
         // Write payload (GTP-U packet)
-        try self.file.writeAll(payload);
+        try writer.writeAll(payload);
+
+        try writer.flush();
     }
 
     /// Write an IPv6 packet to PCAP
@@ -257,8 +266,11 @@ pub const PcapWriter = struct {
         const udp_size: u32 = 8; // UDP header
         const total_size = eth_size + ip_size + udp_size + payload.len;
 
+        var buffer: [4096]u8 = undefined;
+        var file_writer = self.file.writer(&buffer);
+        const writer = &file_writer.interface;
+
         // Write PCAP packet header
-        const writer = self.file.writer();
         try writer.writeInt(u32, ts_sec, .little);
         try writer.writeInt(u32, ts_usec, .little);
         try writer.writeInt(u32, @intCast(total_size), .little); // incl_len
@@ -270,7 +282,7 @@ pub const PcapWriter = struct {
             .src_mac = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x02 },
             .ethertype = 0x86DD, // IPv6
         };
-        try eth_header.write(self.file.writer());
+        try eth_header.write(writer);
 
         // Extract IPv6 addresses and ports
         const src_ip = src_addr.in6.sa.addr;
@@ -288,7 +300,7 @@ pub const PcapWriter = struct {
             .src_ip = src_ip,
             .dst_ip = dst_ip,
         };
-        try ipv6_header.write(self.file.writer());
+        try ipv6_header.write(writer);
 
         // Write UDP header
         const udp_length: u16 = @intCast(udp_size + payload.len);
@@ -302,10 +314,12 @@ pub const PcapWriter = struct {
             .length = udp_length,
             .checksum = udp_checksum,
         };
-        try udp_header.write(self.file.writer());
+        try udp_header.write(writer);
 
         // Write payload (GTP-U packet)
-        try self.file.writeAll(payload);
+        try writer.writeAll(payload);
+
+        try writer.flush();
     }
 
     /// Calculate UDP checksum for IPv6 (mandatory)
